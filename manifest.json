@@ -1,0 +1,76 @@
+{
+    "manifest_version":  3,
+    "name":  "Autodart Modules",
+    "version":  "0.1.592",
+    "icons":  {
+                  "16":  "Main/assets/ICON.png",
+                  "32":  "Main/assets/ICON.png",
+                  "48":  "Main/assets/ICON.png",
+                  "128":  "Main/assets/ICON.png"
+              },
+    "permissions":  [
+                        "storage",
+                        "scripting",
+                        "tabs",
+                        "sidePanel",
+                        "windows",
+                        "debugger"
+                    ],
+    "optional_permissions":  [
+                                 "camera",
+                                 "microphone"
+                             ],
+    "description":  "Autodart Modules — Chrome extension with Streamer.bot integration and overlay tooling.",
+    "host_permissions":  [
+                             "https://play.autodarts.io/*",
+                             "http://127.0.0.1:8765/*",
+                             "http://localhost:8765/*",
+                             "http://*/*",
+                             "https://*/*"
+                         ],
+    "background":  {
+                       "service_worker":  "Main/core/background.js"
+                   },
+    "content_scripts":  [
+                            {
+                                "matches":  [
+                                                "https://play.autodarts.io/*"
+                                            ],
+                                "js":  [
+                                           "Main/bridge/content.js",
+                                           "Main/i18n.js",
+                                           "Modules/lobbyfilter/content.js",
+                                           "Modules/themes/Horizontal/config.js",
+                                           "Modules/themes/Horizontal/mrjames-ad-template.js",
+                                           "Modules/themes/Vertical/config.js",
+                                           "Modules/themes/Horizontal/library.js",
+                                           "Modules/themes/Vertical/library.js",
+                                           "Modules/themes/community-designs.js",
+                                           "Modules/themes/config.js",
+                                           "Modules/themes/content.js"
+                                       ],
+                                "run_at":  "document_start"
+                            }
+                        ],
+    "action":  {
+                   "default_icon":  {
+                                        "16":  "Main/assets/ICON.png",
+                                        "32":  "Main/assets/ICON.png"
+                                    },
+                   "default_title":  "Autodart Modules"
+               },
+    "side_panel":  {
+                       "default_path":  "Main/popup.html"
+                   },
+    "web_accessible_resources":  [
+                                     {
+                                         "resources":  [
+                                                           "Main/bridge/pageScript.js",
+                                                           "Main/settings/settings.ini"
+                                                       ],
+                                         "matches":  [
+                                                         "https://play.autodarts.io/*"
+                                                     ]
+                                     }
+                                 ]
+}

@@ -1,0 +1,1462 @@
+/* MrJames — AD Template (Stylebot-Export 1:1 aus User-Paste „AD Template by MrJames“).
+ * Quelle: Cursor-Transcript; reiner Stylebot-Code ab dem zweiten `:root`-Block (ohne Discord-Zwischenstück).
+ * Ergänzt: `--color-bg-main` / `--color-shadow-strong` (im Paste verwendet, aber nicht definiert).
+ */
+
+:root {
+  --color-bg-main: linear-gradient(145deg, rgba(45, 0, 0, 0.88), rgba(0, 0, 0, 0.92));
+  --color-shadow-strong: 0 0 22px rgba(255, 99, 71, 0.5);
+    --color-text: #FFFFFF;
+  --color-text-soft: #ffb3b3;
+  --color-border: transparent;
+  --color-shadow: 0 0 0px #ffffff;
+  --font-main: 'Montserrat', sans-serif;
+  --spacing-player: 20px;
+  --color-bg-box: linear-gradient(
+    145deg, 
+  rgba(0, 0, 0, 0.4),
+  rgba(0, 0, 0, 0.4)
+);
+
+/* PLAYER BOXES - POSITION & SIZE */
+  --spacing-player: 30px;
+  --player-top-offset: 90px;
+  --player-side-offset: 65px;
+  --player-width: 390px;
+
+  /* Menu Bar */
+  --menu-width: 1455px;
+
+  /* Chalkboard */
+  --chalkboard-right: 3.8em;
+  --chalkboard-top: 32em;
+  --chalkboard-width: 70%;
+  --chalkboard-height: 41%;
+  --chalkboard-font-size: 40px;
+}
+
+/* --- Hauptcontainer --- */
+:root:not(:has(.css-rc3vw3)) .css-tkevr6 {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  box-sizing: border-box;
+  background: var(--color-bg-main);
+  color: var(--color-text);
+  font-family: var(--font-main);
+}
+
+/* --- Gemeinsame Basis fŸr alle Spielerboxen --- */
+:root:not(:has(.css-rc3vw3)) .css-rtn29s,
+:root:not(:has(.css-rc3vw3)) .css-hjw8x4 {
+  background: var(--color-bg-box);
+  color: var(--color-text);
+  padding: 1rem;
+  box-sizing: border-box;
+  border: 2px solid var(--color-border);
+  box-shadow: var(--color-shadow);
+  transition: all 0.3s ease;
+  border-radius: 12px;
+  z-index: 10;
+  position: absolute;
+  width: 400px;
+  height: calc((100% - 180px) / 3);
+}
+
+/* --- Hover-Effekt --- */
+:root:not(:has(.css-rc3vw3)) .css-rtn29s:hover,
+:root:not(:has(.css-rc3vw3)) .css-hjw8x4:hover {
+  box-shadow: var(--color-shadow-strong);
+  transform: scale(1.03);
+  cursor: pointer;
+}
+
+/* --- Kompakter Bereich --- */
+:root:not(:has(.css-rc3vw3)) .css-1cdcn26 {
+  margin: 0 auto;
+  transform: scale(0.95);
+  background-color: transparent;
+  color: var(--color-text);
+}
+
+/* --- Navigation ---*/ 
+:root:not(:has(.css-rc3vw3)) .css-ege71s {
+  background: var(--color-bg-main);
+  background-color: transparent;
+  color: var(--color-text);
+}
+
+/* --- Turn- & Score-Bereich --- */
+:root:not(:has(.css-rc3vw3)) #ad-ext-turn .css-rrf7rv,
+:root:not(:has(.css-rc3vw3)) #ad-ext-turn .score.css-156dsds,
+:root:not(:has(.css-rc3vw3)) #ad-ext-turn .ad-ext-turn-throw.css-1p5spmi,
+:root:not(:has(.css-rc3vw3)) #ad-ext-turn button.chakra-button.css-ol79nz  {
+  background: var(--color-bg-box);
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  box-shadow: var(--color-shadow);
+  text-shadow: 0 0 15px var(--color-shadow);
+  transition: all 0.3s ease;
+  margin-bottom: 1rem;
+  border-radius: 10px;
+}
+
+:root:not(:has(.css-rc3vw3)) #ad-ext-turn .css-rrf7rv { font-size: 32px; }
+:root:not(:has(.css-rc3vw3)) #ad-ext-turn .score.css-156dsds,
+:root:not(:has(.css-rc3vw3)) #ad-ext-turn .ad-ext-turn-throw.css-1p5spmi {
+  font-size: 100px;
+  font-weight: bold;
+}
+
+:root:not(:has(.css-rc3vw3)) #ad-ext-turn .css-rrf7rv:hover,
+:root:not(:has(.css-rc3vw3)) #ad-ext-turn .score.css-156dsds:hover,
+:root:not(:has(.css-rc3vw3)) #ad-ext-turn .ad-ext-turn-throw.css-1p5spmi:hover {
+  box-shadow: var(--color-shadow-strong);
+  transform: scale(1.03);
+  cursor: pointer;
+}
+
+/* --- Dark Theme Overrides --- */
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc,
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc div.css-ab3dry {
+  background: var(--color-bg-main) !important;
+  color: var(--color-text);
+  font-family: var(--font-main);
+}
+
+/* --- Buttons im Dark Theme --- */
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc
+div.css-ab3dry div.chakra-stack.css-2z3xwd
+div.animate__animated.animate__fadeIn.css-14kci4d
+div.css-17gl2zv div.chakra-stack.css-1aucrbz a.chakra-button.css-z1xk1r {
+  background: var(--color-bg-box) !important;
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: 0 0 6px var(--color-border);
+  border-radius: 12px;
+  text-shadow: 0 0 4px var(--color-border);
+  font-weight: bold;
+  transition: all 0.25s ease;
+}
+
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc
+div.css-ab3dry div.chakra-stack.css-2z3xwd
+div.animate__animated.animate__fadeIn.css-14kci4d
+div.css-17gl2zv div.chakra-stack.css-1aucrbz a.chakra-button.css-z1xk1r:hover {
+  box-shadow: 0 0 10px var(--color-border);
+  transform: scale(1.03);
+  color: var(--color-text) !important;
+  text-shadow: 0 0 6px var(--color-border);
+}
+
+/* --- Cards --- */
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc div.css-gmuwbf 
+div.chakra-card.animate__animated.animate__fadeIn.css-1fysknj {
+  background: var(--color-bg-box) !important;
+  border: 1px solid var(--color-border);
+  box-shadow: 0 0 6px var(--color-border);
+  border-radius: 12px;
+  color: var(--color-text);
+  text-shadow: 0 0 4px var(--color-shadow);
+}
+
+/* Header & Footer in Cards */
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc div.css-gmuwbf 
+div.chakra-card.animate__animated.animate__fadeIn.css-1fysknj div.chakra-card__header.css-1sl53ol {
+  background: var(--color-bg-main) !important;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.75rem 1rem;
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc div.css-gmuwbf 
+div.chakra-card.animate__animated.animate__fadeIn.css-1fysknj div.chakra-card__footer.css-fpfl0e {
+  background: var(--color-bg-main) !important;
+  border-top: 1px solid var(--color-border);
+  padding: 0.75rem 1rem;
+}
+/* Box-Styling fŸr alle Buttons in der Mitte */
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc div.css-ab3dry div.chakra-stack.css-2z3xwd div.animate__animated.animate__fadeIn.css-14kci4d div.css-17gl2zv div.chakra-stack.css-1aucrbz div.chakra-stack.css-xcvsk5 a.chakra-button.css-z1xk1r, button.chakra-button.css-xrup10,
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc div.css-ab3dry div.chakra-stack.css-2z3xwd div.animate__animated.animate__fadeIn.css-14kci4d div.css-17gl2zv div.chakra-stack.css-1aucrbz a.chakra-button.css-z1xk1r {
+    background-color: var(--color-bg-main) !important; /* Dunkelrot passend zum Theme */
+    border-radius: 8px; /* Ecken leicht abgerundet */
+    box-shadow: none !important; /* Glow weg */
+    color: #fff; /* Schrift wei§ */
+    font-weight: bold;
+    text-shadow: none !important; /* Text-Glow weg */
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Hover-Effekt ohne Glow */
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc div.css-ab3dry div.chakra-stack.css-2z3xwd div.animate__animated.animate__fadeIn.css-14kci4d div.css-17gl2zv div.chakra-stack.css-1aucrbz div.chakra-stack.css-xcvsk5 a.chakra-button.css-z1xk1r:hover,
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc div.css-ab3dry div.chakra-stack.css-2z3xwd div.animate__animated.animate__fadeIn.css-14kci4d div.css-17gl2zv div.chakra-stack.css-1aucrbz a.chakra-button.css-z1xk1r:hover {
+    background-color: var(--color-bg-main) !important; /* Etwas heller beim Hover */
+    border-color: #7f2e2e;
+    box-shadow: none !important; /* Kein Box-Glow beim Hover */
+    text-shadow: none !important; /* Kein Text-Glow beim Hover */
+}
+
+/* --- Cards --- */
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc div.css-gmuwbf 
+div.chakra-card.animate__animated.animate__fadeIn.css-1fysknj {
+  background: var(--color-bg-box) !important;
+  border: 1px solid var(--color-border);
+  box-shadow: none !important; /* Glow entfernt */
+  border-radius: 12px;
+  color: var(--color-text);
+  text-shadow: none !important; /* Glow entfernt */
+}
+
+/* Header in Cards */
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc div.css-gmuwbf 
+div.chakra-card.animate__animated.animate__fadeIn.css-1fysknj div.chakra-card__header.css-1sl53ol {
+  background: var(--color-bg-main) !important;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.75rem 1rem;
+  font-weight: bold;
+  font-size: 1.2rem;
+  color: var(--color-text);
+  text-shadow: none !important; /* Glow entfernt */
+}
+
+/* Footer in Cards */
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc div.css-gmuwbf 
+div.chakra-card.animate__animated.animate__fadeIn.css-1fysknj div.chakra-card__footer.css-fpfl0e {
+  background: var(--color-bg-main) !important;
+  border-top: 1px solid var(--color-border);
+  padding: 0.75rem 1rem;
+  color: var(--color-text);
+  text-shadow: none !important; /* Glow entfernt */
+}
+
+/* Hover-Effekt fŸr Cards */
+html body.chakra-ui-dark div#root div.css-z42oq0 div.css-nfhdnc div.css-gmuwbf 
+div.chakra-card.animate__animated.animate__fadeIn.css-1fysknj:hover {
+  transform: scale(1.03);
+  cursor: pointer;
+  box-shadow: none !important; /* Kein Glow beim Hover */
+  text-shadow: none !important;
+}
+/* --- Navigation Dark Theme mit eckigem roten Rahmen --- */
+html body.chakra-ui-dark div#root div.css-z42oq0 div.chakra-stack.navigation.css-ege71s {
+background: var(--color-bg-main) !important;
+
+background: linear-gradient(
+  145deg,
+  rgba(0, 0, 0, 0.4),
+  rgba(0, 0, 0, 0.4)
+) !important;
+
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-border); /* Roter Rahmen */
+  border-radius: 0; /* Eckig */
+  box-shadow: none !important; /* Kein Glow */
+  font-family: var(--font-main);
+}
+/* --- MenŸ-List an Theme anpassen (rund) --- */
+#menu-list-\:rfr\: {
+  background: var(--color-bg-box) !important; /* Dunkelroter Verlauf wie Boxen */
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-border); /* Roter Rahmen */
+  border-radius: 12px; /* Runde Ecken */
+  box-shadow: none !important; /* Kein Glow */
+  font-family: var(--font-main);
+  padding: 0.5rem 0;
+  overflow: hidden; /* Damit abgerundete Ecken auch fŸr Hover-Effekte gelten */
+}
+
+/* --- MenŸ-Items --- */
+#menu-list-\:rfr\: .chakra-menu__menuitem {
+  background: transparent !important;
+  color: var(--color-text) !important;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3); /* Dezente Linie zwischen Items */
+  text-shadow: none !important; /* Kein Text-Glow */
+}
+
+/* Letztes Item ohne Linie */
+#menu-list-\:rfr\: .chakra-menu__menuitem:last-child {
+  border-bottom: none;
+}
+
+/* Hover-Effekt (rund bleibt erhalten) */
+#menu-list-\:rfr\: .chakra-menu__menuitem:hover {
+  background: rgba(255, 255, 255, 0.15) !important; /* leicht helleres Rot */
+  color: var(--color-text) !important;
+}
+
+/* --- MenŸ-List :r1: im Theme-Stil (rund & rot) --- */
+#menu-list-\:r1\: {
+  background: var(--color-bg-box) !important;
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: none !important;
+  font-family: var(--font-main);
+  padding: 0.5rem 0;
+  overflow: hidden;
+}
+
+/* --- MenŸ-Items --- */
+#menu-list-\:r1\: .chakra-menu__menuitem {
+  background: transparent !important;
+  color: var(--color-text) !important;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  text-shadow: none !important;
+}
+
+/* Letztes Item ohne Linie */
+#menu-list-\:r1\: .chakra-menu__menuitem:last-child {
+  border-bottom: none;
+}
+
+/* Hover-Effekt (passt zum Theme) */
+#menu-list-\:r1\: .chakra-menu__menuitem:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: var(--color-text) !important;
+}
+/* --- MenŸ-Liste im roten, runden Theme-Stil --- */
+#menu-list-\:rhj\: {
+  background: var(--color-bg-box) !important; /* Gleicher Grauton wie Boxen */
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-border); /* Roter Rahmen */
+  border-radius: 12px; /* Rund */
+  box-shadow: none !important; /* Kein Glow */
+  font-family: var(--font-main);
+  padding: 0.4rem 0;
+}
+
+/* --- MenŸ-Items --- */
+#menu-list-\:rhj\: > * {
+  background: transparent !important;
+  color: var(--color-text) !important;
+}
+
+#menu-list-\:rhj\:\hover {
+  background: rgba(255, 107, 107, 0.15) !important;
+}
+/* Spielername im Extended Player Display: immer wei§, ohne Glow */
+:root:not(:has(.css-rc3vw3)) html body.chakra-ui-dark 
+div#root 
+div.css-z42oq0 
+div.css-nfhdnc 
+div.css-tkevr6 
+div#ad-ext-player-display.chakra-stack.showAnimations.css-1iy3ld1 
+div.ad-ext-player.css-1en42kf 
+div.chakra-stack.css-y3hfdd 
+div.chakra-stack.css-37hv00 
+div.css-aa7b80 
+span.css-elma0c 
+div.chakra-stack.css-1igwmid 
+span.ad-ext-player-name.css-xgedvp 
+p.chakra-text.css-0 {
+  color: #ffffff !important;      
+  text-shadow: none !important;   
+}
+
+.css-1igwmid:has(.css-1j0bqop) {
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  color: #ffffff !important;
+}
+
+.css-fqllj7,
+.css-1bnkhxu {
+  flex: 0 0 auto !important;
+}
+
+div.chakra-stack.css-37hv00 {
+  flex-wrap: nowrap !important;
+
+  margin: 0 auto !important;    
+
+  align-items: center !important;
+}
+
+[id^="menu-list-"] {
+  background: var(--color-bg-box) !important;
+  color: var(--color-text) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+  font-family: var(--font-main) !important;
+  padding: 0.5rem 0 !important;
+  overflow: hidden !important;
+}
+
+[id^="menu-list-"] .chakra-menu__menuitem {
+  background: transparent !important;
+  color: var(--color-text) !important;
+  padding: 0.5rem 1rem !important;
+  text-shadow: none !important;
+  border-bottom: none !important; 
+}
+
+/* Hover-Effekt */
+[id^="menu-list-"] .chakra-menu__menuitem:hover {
+  background: rgba(255, 255, 1255, 0.15) !important;
+  color: var(--color-text) !important;
+}
+/* Entfernt die Rahmen der einzelnen MenŸ-Items */
+[id^="menu-list-"] .chakra-menu__menuitem {
+  border: none !important; 
+  background: transparent !important;
+  color: var(--color-text) !important;
+  padding: 0.5rem 1rem !important;
+  text-shadow: none !important;
+}
+body > div:nth-of-type(1) > div > div:nth-of-type(1) {
+  background: var(--color-bg-box) !important;
+  color: var(--color-text) !important;
+  border-radius: 0 !important; /* eckig */
+  padding: 1rem !important;
+  border: 1px solid var(--color-border) !important;
+}
+body > div:nth-of-type(1) > div > div:nth-of-type(1) {
+  background: var(--color-bg-box) !important;
+  color: var(--color-text) !important;
+  border-radius: 0 !important; /* eckig */
+  border: 1px solid var(--color-border) !important;
+
+  /* StabilitŠt: keine Layout-Verschiebung */
+  padding: 0 !important;       
+  margin: 0 !important;        
+  box-sizing: border-box !important; 
+  position: relative !important; 
+}
+
+/* Spielerboxen Breite */
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div {
+  position: absolute;
+  width: 400px;
+}
+
+/* Scoring und Bullout Anzeige Gesamtbreite */
+:root:not(:has(.css-rc3vw3)) .css-1omnor5,
+:root:not(:has(.css-rc3vw3)) .css-ul22ge{
+  width: 1000px;  
+}
+
+/* Scoring Anzeige Hšhe */
+:root:not(:has(.css-rc3vw3)) .css-1dkgpmk,
+:root:not(:has(.css-rc3vw3)) .css-1wlduvp,
+:root:not(:has(.css-rc3vw3)) .css-sm8wdq,
+:root:not(:has(.css-rc3vw3)) #ad-ext-turn .css-rrf7rv,
+:root:not(:has(.css-rc3vw3)) #ad-ext-turn .score.css-156dsds,
+:root:not(:has(.css-rc3vw3)) #ad-ext-turn .ad-ext-turn-throw.css-1p5spmi {
+ height: 120px; 
+}
+
+/* Scoring Anzeige bei Bust/Win/CheckGuide Position */
+:root:not(:has(.css-rc3vw3)) .css-1dkgpmk,
+:root:not(:has(.css-rc3vw3)) .css-1wlduvp,
+:root:not(:has(.css-rc3vw3)) .css-sm8wdq,
+:root:not(:has(.css-rc3vw3)) .css-881tme {
+ position: relative;
+ top: -0.5em;
+}
+
+/* Scoring Anzeige bei Bot/Public Game Position */
+:root:not(:has(.css-rc3vw3)):root:has(.css-7lnr9n) .css-1emway5 {
+ position: relative;
+ top: -1em;
+}
+
+/* MenŸleiste Gesamtbreite */
+:root:not(:has(.css-rc3vw3)) .css-19lo6pj {
+  width: 1385px;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Chalkboard 1vs1 */
+:root:has(.css-1u90hiz) .css-1u90hiz {
+ position: absolute;
+ right: 4.8em;
+ top: 22em;
+ height: 50%;
+ width: 60%;
+}
+
+/* Chalkboard Schrift Grš§e/Breite */
+:root:has(.css-1u90hiz) tbody tr td {
+ font-size: 45px; 
+ width:50%;
+}
+
+/* Aktiver Spieler Box */
+:root:not(:has(.css-rc3vw3)) .css-rtn29s {
+  border-color: #FF6347;
+  border-style: solid; 
+}
+
+/* Ingame Wallpaper
+:root:has(.css-1cdcn26) body {
+ background-image: url(https://images.wallpapersden.com/image/download/cool-red-mountains-4k_bG1mamyUmZqaraWkpJRpZWVlrWdnamU.jpg);
+ background-repeat: no-repeat;
+ background-size:cover;
+ background-position: center;
+}
+*/
+
+/* Offgame Wallpaper
+:root:not(:has(.css-1cdcn26)) body {
+ background-image: url(https://images.wallpapersden.com/image/download/cool-red-mountains-4k_bG1mamyUmZqaraWkpJRpZWVlrWdnamU.jpg);
+ background-repeat: no-repeat;
+ background-size:cover;
+ background-position: center;
+}*/
+
+/* Ingame Wallpaper
+:root:has(.css-1cdcn26) body {
+ background-image: url(https://i.redd.it/memi1596f0e51.png);
+ background-repeat: no-repeat;
+ background-size:cover;
+ background-position: center;
+}*/
+
+/* Offgame Wallpaper
+:root:not(:has(.css-1cdcn26)) body {
+ background-image: url(https://i.redd.it/memi1596f0e51.png);
+ background-repeat: no-repeat;
+ background-size:cover;
+ background-position: center;
+}*/
+
+/*Firefox Fix*/
+html, body, #root {
+  background-image: url(https://i.redd.it/memi1596f0e51.png) !important;
+  background-repeat: no-repeat !important;
+  background-size: cover !important;
+  background-position: center !important;
+}
+
+.fireworks.css-1cjvbe6 {
+  position: fixed;
+  top: -10vw;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+@keyframes impactShake {
+  0% { transform: translate(0,0); }
+  20% { transform: translate(-12px, 6px); }
+  40% { transform: translate(12px, -6px); }
+  60% { transform: translate(-8px, 4px); }
+  80% { transform: translate(8px, -4px); }
+  100% { transform: translate(0,0); }
+}
+
+body:has(.fireworks.css-1cjvbe6) {
+  animation: impactShake 0.4s linear infinite !important;
+}
+
+/* Scoring Checkout #1 */
+div.suggestion.css-1dkgpmk {
+   overflow: visible;
+  height: 140px;
+  background-color: rgba(238, 154, 0, 0.0);
+    border: 1px ridge rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  transition: all 0.25s ease;
+  color: white;
+}
+
+/* Scoring Checkout #2*/
+div.suggestion.css-1dkgpmk::before {
+    content: "CHECKOUT";
+    position: absolute;
+    top: -10px;
+    left: 10px;
+    background-color: rgba(0, 0, 0, 0.4);
+    color: rgba#1a1a1a;
+    font-family: "Arial Black", sans-serif;
+    font-size: 15px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    padding: 2px 12px;
+    border-radius: 15px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    transform: rotate(-2deg);
+    z-index: 10;
+    border: 1px solid rgba(0,0,0,0.1);
+}
+
+/* Registration Animation */
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+/* Registration Animation */
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+/* Active Player Animation */
+:root:not(:has(.css-rc3vw3)) .css-rtn29s {
+  --border-width: 5px;
+  position: relative;  
+  
+  background: rgba(0, 0, 0, 0.5) !important; 
+  
+  border: none !important;
+  border-radius: 12px;
+  
+  box-shadow: 0px 0px 30px 15px rgba(255, 99, 71, 0.30);
+}
+
+:root:not(:has(.css-rc3vw3)) .css-rtn29s::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: var(--border-width);
+  border-radius: 12px; 
+  
+  
+  background: conic-gradient(
+    from var(--angle), 
+    transparent 5%, 
+      #FF6347
+  );
+  
+  
+  -webkit-mask: 
+    linear-gradient(#ffffff 0 0) content-box, 
+    linear-gradient(#ffffff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  
+  animation: rotate-border 20s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes rotate-border {
+  to {
+    --angle: 360deg;
+  }
+}
+
+:root:not(:has(.css-rc3vw3)) .css-hjw8x4::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: var(--border-width);
+  border-radius: 12px; 
+  
+  
+  background: conic-gradient(
+    from var(--angle), 
+    transparent 90%, 
+    #ffffff, 
+    #ffffff, 
+    #FFFFFF
+  );
+  
+  -webkit-mask: 
+    linear-gradient(#FFF 0 0) content-box, 
+    linear-gradient(#FFF 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  
+ 
+  animation: rotate-border 20s linear infinite;
+  pointer-events: none;
+}
+
+/* Dartboard Offline */
+@keyframes redPulse {
+    0% {
+        box-shadow: rgba(239, 83, 80, 0.4) 0px 0px 40px 10px;
+    }
+    50% {
+        box-shadow: rgba(239, 83, 80, 0.8) 0px 0px 100px 25px;
+    }
+    100% {
+        box-shadow: rgba(239, 83, 80, 0.4) 0px 0px 40px 10px;
+    }
+}
+
+/* Dartboard Offline — nur Spiel-Scheibe im Match-Panel (.css-tkevr6), nicht beliebige .css-13u3cwk (z. B. Header). */
+:root:not(:has(.css-rc3vw3)) .css-tkevr6 div.css-13u3cwk:where(:has(svg[viewBox="0 0 1000 1000"]), :has(> canvas)) {
+  animation: redPulse 2s infinite ease-in-out !important;
+  transition: 0.3s;
+}
+
+/* Dartboard Yellow (Takeout) */
+@keyframes yellowPulse {
+    0% { box-shadow: rgba(255, 235, 59, 0.4) 0px 0px 40px 10px; }
+    50% { box-shadow: rgba(255, 235, 59, 0.8) 0px 0px 100px 25px; }
+    100% { box-shadow: rgba(255, 235, 59, 0.4) 0px 0px 40px 10px; }
+}
+/* Dartboard Yellow (Takeout) — gleiche Eingrenzung wie Offline-Puls */
+:root:not(:has(.css-rc3vw3)) .css-tkevr6 div.css-3nk254:where(:has(svg[viewBox="0 0 1000 1000"]), :has(> canvas)) {
+  animation: yellowPulse 2s infinite ease-in-out !important;
+}
+
+/* =========================
+   RAINBOW PULSE ANIMATION
+========================= */
+/* =========================
+   ULTRA RAINBOW PULSE
+========================= */
+@keyframes rainbowPulse {
+  0% {
+    box-shadow: 0 0 35px 10px red;
+  }
+  10% {
+    box-shadow: 0 0 45px 12px deeppink;
+  }
+  20% {
+    box-shadow: 0 0 55px 14px orange;
+  }
+  30% {
+    box-shadow: 0 0 65px 16px gold;
+  }
+  40% {
+    box-shadow: 0 0 80px 18px yellow;
+  }
+  50% {
+    box-shadow: 0 0 95px 22px lime;
+  }
+  60% {
+    box-shadow: 0 0 85px 20px turquoise;
+  }
+  70% {
+    box-shadow: 0 0 75px 18px cyan;
+  }
+  80% {
+    box-shadow: 0 0 65px 16px dodgerblue;
+  }
+  90% {
+    box-shadow: 0 0 55px 14px blueviolet;
+  }
+  100% {
+    box-shadow: 0 0 35px 10px magenta;
+  }
+}
+
+/* 🌪️ Spin Animation */
+@keyframes insaneSpin {
+  0%   { transform: rotate(0deg) scale(1); }
+  25%  { transform: rotate(360deg) scale(1.3); }
+  50%  { transform: rotate(720deg) scale(0.9); }
+  75%  { transform: rotate(1080deg) scale(1.4); }
+  100% { transform: rotate(1440deg) scale(1); }
+}
+
+/* Glow */
+@keyframes rainbowFlash {
+  0% {
+    box-shadow: 0 0 35px 10px red;
+  }
+  10% {
+    box-shadow: 0 0 45px 12px deeppink;
+  }
+  20% {
+    box-shadow: 0 0 55px 14px orange;
+  }
+  30% {
+    box-shadow: 0 0 65px 16px gold;
+  }
+  40% {
+    box-shadow: 0 0 80px 18px yellow;
+  }
+  50% {
+    box-shadow: 0 0 95px 22px lime;
+  }
+  60% {
+    box-shadow: 0 0 85px 20px turquoise;
+  }
+  70% {
+    box-shadow: 0 0 75px 18px cyan;
+  }
+  80% {
+    box-shadow: 0 0 65px 16px dodgerblue;
+  }
+  90% {
+    box-shadow: 0 0 55px 14px blueviolet;
+  }
+  100% {
+    box-shadow: 0 0 35px 10px magenta;
+  }
+}
+
+/* 180 / Fireworks: nur echte Dartscheibe im Match-Panel — nicht jedes .css-79elbk (Caller/Name-Banner nutzen denselben Hash). */
+body:has(.fireworks.css-1cjvbe6) .css-tkevr6 .css-79elbk:where(:has(svg[viewBox="0 0 1000 1000"]), :has(> canvas)) {
+  transform-origin: center center;
+  animation: insaneSpin 2.2s linear infinite,
+             rainbowFlash 2.2s linear infinite;
+}
+
+body:has(.fireworks.css-1cjvbe6) .css-tkevr6 .css-79elbk:where(:has(svg[viewBox="0 0 1000 1000"]), :has(> canvas)) {
+  border-radius: 50%;
+  overflow: hidden;
+  outline: 2px solid rgba(255, 255, 255, 0.4);
+  outline-offset: 3px;
+}
+
+/* Scheibe ggf. auch im Fireworks-Overlay (zentrierte Kopie), falls außerhalb .css-tkevr6 */
+body:has(.fireworks.css-1cjvbe6) .fireworks.css-1cjvbe6 .css-79elbk:where(:has(svg[viewBox="0 0 1000 1000"]), :has(> canvas)) {
+  transform-origin: center center;
+  animation: insaneSpin 2.2s linear infinite,
+             rainbowFlash 2.2s linear infinite;
+  border-radius: 50%;
+  overflow: hidden;
+  outline: 2px solid rgba(255, 255, 255, 0.4);
+  outline-offset: 3px;
+}
+
+/* === Player Boxes / Style === */
+
+/* Player Boxes - Base */
+:root:not(:has(.css-rc3vw3)) .css-rtn29s,
+:root:not(:has(.css-rc3vw3)) .css-hjw8x4 {
+  position: absolute !important;
+  z-index: 10;
+  width: var(--player-width);
+  height: calc((100% - 180px) / 3);
+  min-height: 130px;
+  //padding: 0.75rem 0.8rem;
+  transition: all 0.3s ease;
+  }
+
+  /* 1-2 Players (Player 1) */
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(1):only-child,
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(1):nth-last-child(2) {
+  top: var(--player-top-offset);
+  left: var(--player-side-offset);
+    height: calc(100% - 200px);
+  }
+
+/* 1-2 Players (Player 2) */
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(2):nth-last-child(1) {
+  top: var(--player-top-offset);
+  right: var(--player-side-offset);
+  height: calc(100% - 200px);
+}
+
+/* 3-4 Players (Player 1) */
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(1):nth-last-child(3),
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(1):nth-last-child(4) {
+  top: var(--player-top-offset);
+  left: var(--player-side-offset);
+  height: calc((105% - 180px) / 2 - var(--spacing-player))
+  
+   
+}
+
+/* 3-4 Players (Player 2) */
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(2):nth-last-child(2),
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(2):nth-last-child(3) {
+  top: var(--player-top-offset);
+  right: var(--player-side-offset);
+  height: calc((105% - 180px) / 2 - var(--spacing-player))
+}
+
+/* 3-4 Players (Player 3) */
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(3):nth-last-child(1),
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(3):nth-last-child(2) {
+  top: calc(var(--player-top-offset) + ((100% - 200px) / 2) + var(--spacing-player));
+  left: var(--player-side-offset);
+  height: calc((105% - 180px) / 2 - var(--spacing-player))
+}
+
+/* 3-4 Players (Player 4) */
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(4):last-child {
+  top: calc(var(--player-top-offset) + ((100% - 180px) / 2) + var(--spacing-player));
+  right: var(--player-side-offset);
+  height: calc((105% - 180px) / 2 - var(--spacing-player))
+}
+
+/* 5-6 Players */
+:root {
+  --row-height-3: calc((108% - 180px) / 3 - var(--spacing-player));
+}
+
+/* 5-6 Players (Player 1) */
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(1):nth-last-child(5),
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(1):nth-last-child(6) {
+  top: var(--player-top-offset);
+  left: var(--player-side-offset);
+  height: var(--row-height-3);
+}
+
+/* 5-6 Players (Player 2) */
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(2):nth-last-child(4),
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(2):nth-last-child(5) {
+  top: var(--player-top-offset);
+  right: var(--player-side-offset);
+  height: var(--row-height-3);
+}
+
+/* 5-6 Players (Player 3) */
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(3):nth-last-child(3),
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(3):nth-last-child(4) {
+  top: calc(var(--player-top-offset) + ((100% - 180px) / 3) + var(--spacing-player));
+  left: var(--player-side-offset);
+  height: var(--row-height-3);
+}
+
+/* 5-6 Players (Player 4) */
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(4):nth-last-child(2),
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(4):nth-last-child(3) {
+  top: calc(var(--player-top-offset) + ((100% - 180px) / 3) + var(--spacing-player));
+  right: var(--player-side-offset);
+  height: var(--row-height-3);
+}
+
+/* 5-6 Players (Player 5) */
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(5):nth-last-child(1),
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(5):nth-last-child(2) {
+  top: calc(var(--player-top-offset) + 2 * ((100% - 180px) / 3) + 2 * var(--spacing-player));
+  left: var(--player-side-offset);
+  height: var(--row-height-3);
+}
+
+/* 5-6 Players (Player 6) */
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > div:nth-child(6):last-child {
+  top: calc(var(--player-top-offset) + 2 * ((100% - 180px) / 3) + 2 * var(--spacing-player));
+  right: var(--player-side-offset);
+  height: var(--row-height-3);
+}
+
+/* Camera Icon) */
+button.chakra-button.css-15suq9 {
+  top: px;
+  left: px;
+}
+
+/* Avatar (Circle) */
+:root:not(:has(.css-rc3vw3)):root:has(.css-1cdcn26) div.chakra-stack.css-1psdi5l img, 
+:root:not(:has(.css-rc3vw3)):root:has(.css-1cdcn26) div.chakra-stack.css-1psdi5l .chakra-avatar {
+  border-radius: 50% !important;
+  overflow: hidden !important;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  }
+
+/* Avatar-Flag */
+img.chakra-image.css-6t0bzd {
+   position: absolute;
+  transform: scale(0.4);
+}
+
+/* Avatar Size and Position */
+:root:not(:has(.css-rc3vw3)):root:has(.css-1cdcn26):root:not(:has(#ad-ext-player-display > div:nth-child(3))) div.chakra-stack.css-1psdi5l {
+  position: absolute;
+  top: -30px;
+  left: 52%;
+  transform: translate(-3%, -50%);
+  scale: 5 !important;
+
+}
+
+:root:has(p.chakra-text.ad-ext-player-score.css-1r7jzhg)
+:root:has(p.chakra-text.css-11cuipc) 
+[class*="chakra-avatar"]:not(:has(img)) {
+    background-color: #FF6347 !important;
+    color: #FFFFFF !important;
+}
+
+:root:has(p.chakra-text.ad-ext-player-score.css-1r7jzhg)
+[class*="chakra-avatar"]:not(:has(img)) div {
+  color: #FFFFFF !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+:root:has(p.chakra-text.ad-ext-player-score.css-1r7jzhg)
+[class*="chakra-avatar"]:has(img) {
+    background-color: transparent !important;
+}
+
+:root:has(p.chakra-text.ad-ext-player-score.css-1r7jzhg)
+[class*="chakra-avatar"] img {
+    background-color: transparent !important;
+    object-fit: cover;
+}
+
+/* LEGS */
+:root:not(:has(.css-rc3vw3 ,.css-da85l7)):root:not(:has(#ad-ext-player-display > div:nth-child(3))) span.css-3fr5p8 {
+    position: absolute;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    
+    left: 40px !important;
+    top:  -135px !important;
+    width: 75px;
+    height: 100px;
+    padding: 20px;
+    border-radius: 1px;
+    background: var(--color-bg-box);
+    backdrop-filter: blur(4px);
+    border-right: 1px solid rgba(255, 255, 255, 1);
+    border-bottom: 1px solid rgba(255, 255, 255, 1);
+    border-left: 1px outset rgba(255, 255, 255, 1);
+    border-top: 1px outset rgba(255, 255, 255, 1);
+    border-radius: 12px;
+    
+    box-shadow: 0 8px 32px rgba(255, 255, 255, 0.20);
+    transition: all 0.3s ease-in-out;
+}
+
+/* LEGS Text */
+:root:not(:has(.css-rc3vw3 ,.css-da85l7)):root:not(:has(#ad-ext-player-display > div:nth-child(3))) span.css-3fr5p8::before {
+    content: "LEGS";
+    position: absolute;
+    top: 10px;
+    color: #ffffff;
+    font-size: 1.6rem;
+    font-weight: 600;
+    font-family: var(--font-main);
+    letter-spacing: 0.em;
+    margin-bottom: 8px;
+    
+}
+/* LEGS Number */
+:root:not(:has(.css-rc3vw3 ,.css-da85l7)):root:not(:has(#ad-ext-player-display > div:nth-child(3))) p.chakra-text.css-5i7dz4  {
+  position: absolute;
+    top:  35px;
+    margin: 0 !important;
+    padding: 10px !important;
+    
+    font-size: 2.3rem !important;
+    font-weight: 800 !important;
+    line-height: 1;
+    font-family: var(--font-main);
+    color: #48bb78 !important; 
+    
+}
+
+/* SETS */
+:root:not(:has(.css-rc3vw3 ,.css-da85l7)):root:not(:has(#ad-ext-player-display > div:nth-child(3))) span.css-143thu1 {
+    position: absolute;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    left: 287px !important;
+    top:  -135px !important;
+    width: 75px;
+    height: 100px;
+    padding: 20px;
+    border-radius: 1px;
+    background: var(--color-bg-box); 
+    backdrop-filter: blur(4px);
+    border-right: 1px solid rgba(255, 255, 255, 1);
+    border-bottom: 1px solid rgba(255, 255, 255, 1);
+    border-left: 1px outset rgba(255, 255, 255, 1);
+    border-top: 1px outset rgba(255, 255, 255, 1);
+    border-radius: 12px;
+    
+    box-shadow: 0 8px 32px rgba(255, 255, 255, 0.20);
+    transition: all 0.3s ease-in-out;
+}
+
+/* TEXT SETS */
+:root:not(:has(.css-rc3vw3 ,.css-da85l7)):root:not(:has(#ad-ext-player-display > div:nth-child(3))) span.css-143thu1::before {
+    content: "SETS";
+    position: absolute;
+    top: 13px;
+    color: #ffffff;
+    font-size: 1.6rem;
+    
+    font-weight: 600;
+    font-family: var(--font-main);
+    margin-bottom: 8px;  
+}
+/* SETS Number */
+:root:not(:has(.css-rc3vw3 ,.css-da85l7)):root:not(:has(#ad-ext-player-display > div:nth-child(3))) span.css-143thu1 p.chakra-text.css-5i7dz4 {
+    position: absolute;
+    top:  35px;
+    margin: 0 !important;
+    padding: 10px !important;
+    font-family: var(--font-main);
+    font-size: 2.3rem !important;
+    font-weight: 800 !important;
+    line-height: 1;
+    
+    
+    color: rgba(39, 153, 245, 0.9) !important; 
+ 
+}
+
+/* Player Score (501) */
+:root:not(:has(.css-rc3vw3 ,.css-da85l7)) .css-y3hfdd {
+  display: absolute !important;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  width: 110%;
+  height: 110%;
+  gap: 2;
+  top: -30px;
+  padding-top: 2.50rem;
+  
+}
+
+  /* Playername Box */
+:root:not(:has(.css-rc3vw3)):root:has(.css-1cdcn26):root:not(:has(#ad-ext-player-display > div:nth-child(3)))  div.chakra-stack.css-37hv00 {
+  position: absolute !important;
+  top: 200px;
+  
+}
+
+  /* Playername Box #2*/
+:root:not(:has(.css-rc3vw3)) div.chakra-stack.css-37hv00 span.css-z1uxps,
+:root:not(:has(.css-rc3vw3)) div.chakra-stack.css-37hv00 span.css-hewh2h,
+:root:not(:has(.css-rc3vw3)) div.chakra-stack.css-37hv00 span.css-1iduhmb {
+background-color: transparent;
+  
+}
+
+  /* Player Average 0-45+ */
+span.chakra-badge.css-n2903v {
+  color: greenyellow;
+  background-color: transparent;
+  
+  }
+/* Player Average In Match*/
+p.chakra-text.css-1jbqop {
+  position: absolute !important;
+  font-size: 16px;
+  text-align: center !important;
+  justify-content: center;
+  white-space: nowrap;
+  top: 265px;
+  left: 130px;
+}
+
+/* Player Name Font*/
+div.chakra-stack.css-37hv00 p.chakra-text.css-11cuipc {
+  font-size: 30px;
+  }
+
+/* Average Container */
+:root:not(:has(.css-rc3vw3)) .css-37hv00,
+:root:not(:has(.css-rc3vw3)) [class*="average"],
+:root:not(:has(.css-rc3vw3)) .ad-ext-player-average {
+  display: flex !important;
+  flex-direction: row !important;
+  order: 1;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  margin-top: 0.3rem;
+  overflow: visible !important;
+  white-space: nowrap !important;
+}
+
+/* Chalkboard */
+:root:has(.css-1u90hiz) .css-1u90hiz {
+  position: absolute;
+  top: var(--chalkboard-top);
+  right: var(--chalkboard-right);
+  width: var(--chalkboard-width);
+  height: var(--chalkboard-height);
+}
+
+/* Chalkboard #2 */
+:root:has(.css-1u90hiz) tbody tr td  {
+  width: 5%;
+  font-size: var(--chalkboard-font-size);
+  text-align: center;
+}
+
+p.chakra-text.ad-ext-player-score.css-1r7jzhg {
+  position: relative !important;
+  font-size: 165px;
+  top: 300px; 
+}
+
+:root:has(div.chakra-stack.css-y3hfdd) 
+div.chakra-stack.css-fqllj7,
+:root:has(div.chakra-stack.css-y3hfdd) 
+p.chakra-text.css-1j0bqop {
+  display: flex;
+  align-items: center;
+  height: 595px;
+  margin: 0;
+}
+
+button.chakra-button.css-ol79nz,
+button.chakra-button.css-58e0cq,
+span.css-bs3vp6,
+span.css-1p8zg9y,
+span.css-1kxhnmo,
+button.css-bs3vp6,
+a.chakra-button.css-11po3d,
+button.chakra-button.chakra-menu__menu-button.css-10zm3od,
+button.chakra-button.css-1gniigz,
+button.chakra-button.css-1b26ovh,
+a.chakra-link.chakra-button.css-1wo8szn,
+button.chakra-button.css-1cd9b6o,
+button.chakra-button.css-11po3d,
+button.chakra-button.css-1b1zesg,
+section.chakra-modal__content.css-1xpx961,
+div.css-1xw1n5s,
+div.chakra-modal_body.css-1uz8bup,
+button.chakra-button.css-r7xd4a
+{
+  background: var(--color-bg-box);
+  box-shadow: none !important; 
+  border: none !important;     
+}
+
+/* Score (Gameshot Fix) */
+div.winnerAnimation p.ad-ext-player-score {
+    font-size: 120px !important;
+    color: white !important;
+    margin-top: 50px !important;
+}
+ /* Ad-Tools Game Shot Animation */
+.ad-ext_winner-animation,
+.ad-ext_winner-animation > div,
+.winnerAnimation {
+    background-color: transparent !important;
+    background: none !important;
+    box-shadow: none !important;
+}
+
+/* Gameshot NEW #1 */
+.winnerAnimation.ad-ext_winner-animation,
+#ad-ext_winner-animation--message {
+    opacity: 1 !important;
+    height: 0 !important;
+    pointer-events: none !important;
+}
+
+/* Gameshot NEW #2 */
+body:has(.ad-ext_winner-animation) .css-1cdcn26::after {
+    content: "GAMESHOT";
+    position: fixed;
+    z-index: 9999 !important;
+    
+    
+    font-family: "Arial Black", sans-serif;
+    font-size: clamp(60px, 12vw, 120px); 
+    font-weight: 900;
+    color: green;
+    text-transform: uppercase;
+    white-space: nowrap;
+    
+    text-shadow: 
+        0 0 10px rgba(0, 255, 0, 0.5), 
+        0 10px 20px rgba(0,0,0,0.9);
+    -webkit-text-stroke: 1px #fff;
+    
+
+    animation: gameshotWildMove 6s linear infinite;
+}
+
+/* FORCE PLAYER (Gameshot Fix) */
+:root:not(:has(.css-rc3vw3)) #ad-ext-player-display > 
+ div {
+  position: absolute !important;
+  z-index: 50 !important;
+  transform: none !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+  inline-size: 390px;
+}
+
+/* FORCE PLAYER #2 (Gameshot Fix) */
+:root:not(:has(.css-rc3vw3)) #ad-ext_winner-animation--message {
+display: none;
+}
+
+@keyframes gameshotWildMove {
+    0% { 
+        top: 10%; 
+        left: 10%; 
+        transform: translate(0, 0) scale(0.9); 
+        filter: brightness(1);
+    }
+    25% { 
+        top: 80%; 
+        left: 20%; 
+        transform: translate(0, -100%) scale(1.1); 
+        filter: brightness(1.3);
+    }
+    50% { 
+        top: 15%; 
+        left: 70%; 
+        transform: translate(-100%, 0) scale(0.9); 
+        filter: brightness(1);
+    }
+    75% { 
+        top: 70%; 
+        left: 80%; 
+        transform: translate(-100%, -100%) scale(1.1); 
+        filter: brightness(1.3);
+    }
+    100% { 
+        top: 10%; 
+        left: 10%; 
+        transform: translate(0, 0) scale(0.9); 
+        filter: brightness(1);
+    }
+}
+
+/* Scoring Gameshot */
+div.ad-ext-turn-throw.css-sm8wdq {
+   height: 110px;
+  background-color: rgba(0, 238, 0, 0.5);
+    border: 1px ridge rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  transition: all 0.25s ease;
+  color: white;
+}
+
+div.css-1c9rc7u,
+div.css-19t76ww {
+  position: relative;
+}
+
+div.css-1c9rc7u,
+div.css-19t76ww {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 99, 71, 0.25) 25%,
+    rgba(255, 99, 71, 0.9) 50%,
+    rgba(255, 99, 71, 0.25) 75%,
+    transparent 100%
+  ) !important;
+}
+
+.chakra-wrap__list.css-19lo6pj {
+    z-index: 9998 !important;
+    }
+
+.chakra-modal__content,
+div.css-qmryql {
+  background: rgba(0, 0, 0, 0.4) !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+footer.chakra-modal__footer.css-k0waxj
+{
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+header.chakra-modal__header.css-w0hk7h {
+  border-radius: 12px 12px 0 0 !important;
+}
+
+div.chakra-modal__body.css-1uz8bup {
+  border-radius: 0px 0p 0px 0px !important;
+}
+
+div.chakra-stack.css-nddiu2 {
+  border-radius: 12 12 12px 12px !important;
+}
+
+footer.chakra-modal__footer.css-k0waxj {
+  border-radius: 0 0 12px 12px !important;
+}
+
+div.css-131xs5g {
+  border-radius: 12px 12px 0 0 !important;
+}
+
+div.chakra-stack.css-1nhlh41,
+div.chakra-stack.css-o51fhk {
+  border-color: rgba(255, 255, 255, 0.6) !important;
+}
+
+div.css-c7aecr,
+a.chakra-button.css-xrup10,
+span.css-1447rpr {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+div.css-1c7nfs0 {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+div.chakra-stack.navigation.css-ege71s,
+div.css-u5gocy {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+button.chakra-tabs__tab.css-1pjn7in[aria-selected="true"] {
+  border-bottom: 3px solid #FFFFFF !important;
+}
+
+button.chakra-tabs__tab.css-1vm7g5b[aria-selected="true"] {
+  border-bottom: 3px solid #FFFFFF !important;
+}
+
+.chakra-tabs__tab[aria-selected="true"] {
+  color: #FF6347 !important;
+}
+
+a.chakra-button.css-6rxcwm,
+button.chakra-button.css-r7xd4a {
+  color: #ffffff !important;
+}
+
+a.chakra-button.css-6rxcwm {
+  background-color: rgba(255, 99, 71, 0.6) !important;
+}
+
+.chakra-stack.navigation,
+button.chakra-menu__menuitem-option.css-y7jzs3 {
+  background: transparent !important; /* leicht durchsichtig */
+}
+
+.chakra-switch__input:checked + .chakra-switch__track {
+  background-color: #FF6347 !important;
+}
+
+a.chakra-button.css-1nal3hj {
+  color: #ffffff !important;
+}
+
+:root:not(:has(.css-rc3vw3 ,.css-da85l7)) .css-y3hfdd .css-51k6ft:empty {
+  background-color: #FF6347;
+  position: absolute;
+  width: 23px;
+  height: 23px;
+  top: -21px;
+  left: 0;
+  transform: translateX(-13px);
+  border-radius: 50% !important;
+  overflow: hidden !important;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>');
+  background-size: 70%;
+  background-repeat: no-repeat;
+  background-position: center bottom 2px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}

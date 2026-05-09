@@ -1,0 +1,186 @@
+/* Kalibrier-Stage (links) + Marker + Reticle */
+.calib-stageFill {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+}
+.calib-sideTitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+.calib-sideHint {
+  margin: 0;
+  font-size: 11px;
+  opacity: 0.75;
+  line-height: 1.35;
+}
+.calib-zoomPresetList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.calib-zoomPresetList button {
+  width: 100%;
+  border-radius: 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.calib-zoomPresetList button.calib-zoomPresetActive {
+  border-color: rgba(25, 199, 255, 0.45);
+  background: rgba(25, 199, 255, 0.12);
+}
+.calib-sideBtn {
+  border-radius: 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.calib-sideDivider {
+  height: 1px;
+  background: rgba(127, 127, 127, 0.25);
+  margin: 2px 0;
+}
+.calib-imgShell {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  cursor: crosshair;
+}
+.calib-imgShell.calib-waitingCalib {
+  outline: 2px solid rgba(255, 220, 80, 0.9);
+  outline-offset: -2px;
+}
+.calib-zoomInner {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  transform-origin: 50% 50%;
+  will-change: transform;
+  max-width: 100%;
+  max-height: 100%;
+}
+.calib-zoomInner .calib-layoutSvg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+  overflow: visible;
+}
+.calib-marker-hit {
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+.calib-marker-hit:active,
+.calib-markerDragging .calib-marker-hit {
+  cursor: grabbing;
+}
+.calib-marker-main .calib-marker-hit {
+  pointer-events: none;
+  cursor: default;
+}
+.calib-img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  vertical-align: top;
+}
+.calib-reticle {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid rgba(25, 199, 255, 0.92);
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+  z-index: 4;
+}
+.calib-toolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+}
+.calib-toolbar button {
+  border-radius: 8px;
+  padding: 6px 10px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  background: rgba(10, 18, 26, 0.9);
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.calib-aiRowCol {
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+.calib-aiRowCol .calib-aiBtn {
+  width: 100%;
+  flex: none;
+}
+.calib-aiBtn {
+  border-radius: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: rgba(255, 255, 255, 0.07);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.calib-aiBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.calib-aiBtnPrimary {
+  border-color: rgba(25, 199, 255, 0.35);
+  background: rgba(25, 199, 255, 0.14);
+}
+.calib-aiBtnWaiting {
+  border-color: rgba(255, 220, 80, 0.65) !important;
+  background: rgba(255, 220, 80, 0.12) !important;
+}
+.calib-fallbackWrap {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(25, 199, 255, 0.25);
+  background: rgba(25, 199, 255, 0.06);
+  font-size: 11px;
+}
+.calib-fallbackRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}

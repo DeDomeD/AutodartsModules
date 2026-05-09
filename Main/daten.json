@@ -1,0 +1,92 @@
+{
+  "meta": {
+    "project": "Autodart Modules",
+    "generatedAt": "2026-02-16T15:36:06.8824380+01:00",
+    "note": "Schema and field catalog prepared. Live values require an active Autodarts session with the extension running.",
+    "exportMessage": "chrome.runtime.sendMessage({ type: 'GET_CAPTURED_DATA' }, (res) => console.log(res));"
+  },
+  "injector": {
+    "sources": [
+      "ws_game_events",
+      "ws_state",
+      "ws_envelope",
+      "ws_outgoing",
+      "dom_game_event",
+      "dom_state",
+      "fetch_response",
+      "fetch_error",
+      "xhr_response",
+      "eventsource_message",
+      "global_snapshot",
+      "storage_snapshot"
+    ],
+    "eventTypes": [
+      "throw",
+      "state",
+      "event",
+      "capture",
+      "ui"
+    ]
+  },
+  "availableFields": {
+    "throw": [
+      "type",
+      "ts",
+      "score",
+      "player",
+      "segment",
+      "bed",
+      "multiplier",
+      "number",
+      "coords"
+    ],
+    "state": [
+      "type",
+      "ts",
+      "matchId",
+      "player",
+      "round",
+      "set",
+      "leg",
+      "turnBusted",
+      "gameFinished",
+      "winner",
+      "checkoutGuide",
+      "playerScores",
+      "raw"
+    ],
+    "event": [
+      "type",
+      "ts",
+      "event",
+      "raw"
+    ],
+    "capture": [
+      "type",
+      "ts",
+      "source",
+      "meta.topic",
+      "meta.channels",
+      "meta.topics",
+      "meta.rootKeys",
+      "meta.payloadKeys",
+      "meta.detailKeys",
+      "meta.url",
+      "meta.method",
+      "meta.status",
+      "meta.contentType",
+      "meta.reason",
+      "meta.dataType",
+      "raw"
+    ],
+    "ui": [
+      "type",
+      "ts",
+      "payload.kind"
+    ]
+  },
+  "liveData": {
+    "status": "pending_autodarts_session",
+    "snapshot": null
+  }
+}

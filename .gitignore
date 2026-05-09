@@ -1,0 +1,44 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Logs and runtime temp
+*.log
+logs/*.log
+!logs/.gitkeep
+!logs/README.md
+!logs/system.log
+!logs/throws.log
+!logs/state.log
+!logs/events.log
+!logs/actions.log
+!logs/errors.log
+
+# Node (if added later)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dokumentation (lokal / Entwurf, nicht ins Repo)
+Main/docs/
+docs/
+
+# Build / package artifacts
+dist/
+build/
+*.zip
+
+# Local env/config
+.env
+.env.*
+!.env.example
