@@ -186,7 +186,7 @@ try {
     Write-Host "Nichts zu committen (keine Aenderungen)."
     return
   }
-  git commit -m "release: public extension v$ver (no WIP modules)"
+  git commit -m "Autodart Modules v$ver"
   $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
   if (-not $branch -or $branch -eq "HEAD") {
     git branch -M main
