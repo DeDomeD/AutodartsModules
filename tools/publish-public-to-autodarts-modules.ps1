@@ -174,6 +174,12 @@ $ver = [string]$verObj.version
 
 Push-Location $CloneDir
 try {
+  # Einmalig lokale Identitaet (falls noch nicht gesetzt), damit commit klappt
+  if (-not (git config user.email)) {
+    git config user.email "DeDomeD@users.noreply.github.com"
+    git config user.name "DeDomeD"
+  }
+
   git add -A
   $status = git status --porcelain
   if (-not $status) {
@@ -181,7 +187,12 @@ try {
     return
   }
   git commit -m "release: public extension v$ver (no WIP modules)"
-  git push origin HEAD
+  $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
+  if (-not $branch -or $branch -eq "HEAD") {
+    git branch -M main
+    $branch = "main"
+  }
+  git push -u origin $branch
 } finally {
   Pop-Location
 }
