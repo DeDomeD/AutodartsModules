@@ -878,6 +878,26 @@
             return;
           }
 
+          if (msg?.type === "OBS_EXPORT_MOVE_FILTER_SETTINGS") {
+            try {
+              const payload = await ADM.exportObsMoveFilterSettings?.(msg?.sceneName);
+              sendResponse({ ok: true, payload });
+            } catch (e) {
+              sendResponse({ ok: false, error: String(e?.message || e || "obs_export_move_filter_settings_failed") });
+            }
+            return;
+          }
+
+          if (msg?.type === "OBS_IMPORT_MOVE_FILTER_SETTINGS") {
+            try {
+              const result = await ADM.importObsMoveFilterSettings?.(msg?.doc);
+              sendResponse({ ok: true, ...result });
+            } catch (e) {
+              sendResponse({ ok: false, error: String(e?.message || e || "obs_import_move_filter_settings_failed") });
+            }
+            return;
+          }
+
           if (msg?.type === "OBS_IMPORT_MOVE_FILTER_BACKUP") {
             const result = await ADM.importObsMoveFilterBackup?.(msg?.backup);
             sendResponse({ ok: true, ...result });

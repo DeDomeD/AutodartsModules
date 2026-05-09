@@ -189,68 +189,59 @@ body{
   width:auto;
 }
 
-/* OBS-Zoom: ausklappbare Szenen-Karte + Szenen-/Quellen-Dropdowns */
+/* OBS-Zoom: gleiches Muster wie Theme — <details class="bgUploadDropdown"> + summary + .bgUploadBody */
 .obsZoomObsScenesCard{
-  overflow:hidden;
+  overflow:visible;
 }
-.obsZoomScenesHead{
+.obsZoomObsScenesCard > .obsZoomScenesDetails.bgUploadDropdown.formRow{
+  margin-top:0;
+}
+.obsZoomScenesDetails.bgUploadDropdown > summary.obsZoomScenesSummary.bgUploadSummary{
+  text-align:left;
+  display:flex;
   align-items:center;
-  margin-bottom:0;
-  padding:4px 2px 12px;
-  border-bottom:1px solid rgba(255,255,255,.07);
+  justify-content:stretch;
+  list-style:none;
 }
-.obsZoomScenesTitle{
-  margin:0;
-  font-size:12.5px;
-  font-weight:750;
-  letter-spacing:0.02em;
+.obsZoomScenesSummaryInner{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  width:100%;
 }
-.obsZoomScenesChevron.miniChevronBtn{
-  margin-left:0;
-  width:36px;
-  height:36px;
-  min-width:36px;
-  border-radius:12px;
-  border-color:rgba(255,255,255,.14);
-  background:linear-gradient(165deg, rgba(255,255,255,.09), rgba(255,255,255,.03));
-  box-shadow:0 1px 0 rgba(255,255,255,.06) inset;
-  flex-shrink:0;
+.obsZoomScenesSummaryTitle{
+  font-size:13px;
+  font-weight:500;
+  letter-spacing:0.01em;
+  color:rgba(244,248,255,.94);
 }
-.obsZoomScenesChevron.miniChevronBtn:hover{
-  filter:brightness(1.12);
-  border-color:rgba(25,199,255,.28);
-}
-.obsZoomScenesChevron .ddArrow{
+.obsZoomScenesDetails.bgUploadDropdown > summary .obsZoomScenesSummaryArrow.ddArrow,
+.obsZoomScenesDetails.bgUploadDropdown > summary .ddArrow{
   width:16px;
   height:16px;
-  flex-basis:16px;
+  flex:0 0 16px;
   background-size:16px 16px;
+  opacity:0.92;
+  filter:brightness(0) invert(1);
+  transition:transform .18s ease, opacity .18s ease;
 }
-.obsZoomObsScenesCard:has(.obsZoomScenesPanel.open) .obsZoomScenesHead{
-  border-bottom-color:transparent;
-  padding-bottom:10px;
+.obsZoomScenesDetails.bgUploadDropdown[open] > summary .ddArrow{
+  transform:rotate(180deg);
 }
-.inlinePopupWrap.obsZoomScenesPanel{
-  display:none;
-  padding:0;
-  border-top:none;
-  background:transparent;
-}
-.inlinePopupWrap.obsZoomScenesPanel.open{
-  display:block;
-  padding:14px 12px 16px;
-  margin:0 0 2px;
-  border-radius:16px;
-  border:1px solid rgba(255,255,255,.11);
-  background:
-    linear-gradient(155deg, rgba(25,199,255,.09) 0%, transparent 55%),
-    linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.22));
-  box-shadow:
-    0 0 0 1px rgba(0,0,0,.25) inset,
-    0 10px 28px rgba(0,0,0,.18);
-}
-.obsZoomScenesPanel .obsZoomScenesPickRow{
+.obsZoomScenesBody .obsZoomScenesPickRow{
   margin-top:0;
+}
+.obsZoomScenesBody .obsZoomSceneSourcePair{
+  flex-direction:column;
+  align-items:stretch;
+  gap:16px;
+}
+.obsZoomScenesBody .obsZoomScenePick,
+.obsZoomScenesBody .obsZoomSourcePick{
+  flex:none;
+  width:100%;
+  max-width:100%;
 }
 .obsZoomSelectShell{
   position:relative;
@@ -487,6 +478,45 @@ body{
 }
 .btn.secondary.btnObsZoomCalibWip:active{
   transform:translateY(1px);
+}
+
+.obsZoomConfigToolRow{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:stretch;
+  width:100%;
+}
+.obsZoomConfigToolRow > .btn.secondary.btnObsZoomCalibWip{
+  flex:1 1 200px;
+  min-width:0;
+}
+.obsZoomFilterSettingsSplit{
+  display:flex;
+  flex:1 1 160px;
+  min-width:0;
+  border-radius:12px;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 1px 0 rgba(255,255,255,.05) inset;
+}
+.obsZoomFilterSettingsSplit .btn.secondary{
+  flex:1;
+  margin:0;
+  border-radius:0;
+  border:none;
+  min-height:44px;
+  box-sizing:border-box;
+}
+.obsZoomFilterSettingsSplit .obsZoomSplitBtnLeft{
+  border-right:1px solid var(--stroke);
+  border-radius:12px 0 0 12px;
+}
+.obsZoomFilterSettingsSplit .obsZoomSplitBtnRight{
+  border-radius:0 12px 12px 0;
+}
+.obsZoomFilterSettingsSplit .btn.secondary:hover{
+  filter:brightness(1.06);
 }
 
 .list{

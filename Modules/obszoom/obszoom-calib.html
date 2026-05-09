@@ -3,60 +3,30 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Filter kalibrieren — OBS</title>
+  <title>Konfigurator — OBS Zoom</title>
   <link rel="stylesheet" href="../../Main/popup.css" />
   <link rel="stylesheet" href="obszoom-calib-board.css" />
   <style>
-    html, body { margin: 0; height: 100%; overflow: hidden; }
-    #calibRoot.calib-rootSplit {
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #06080c;
+      color: var(--text, #e9eef7);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+    #calibRoot {
       display: flex;
-      flex-direction: row;
+      flex-direction: column;
       height: 100%;
       min-height: 0;
       box-sizing: border-box;
     }
-    #calibLeftCol {
-      flex: 1;
-      min-width: 0;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      background: #06080c;
-      overflow: hidden;
-    }
-    #calibRightCol {
-      flex: 0 0 min(300px, 38vw);
-      max-width: 360px;
-      min-height: 0;
-      overflow-y: auto;
-      overflow-x: hidden;
-      border-left: 1px solid rgba(127,127,127,.28);
-      padding: 10px 12px 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      box-sizing: border-box;
-    }
-    .calib-rightTitle {
-      margin: 0;
-      font-size: 13px;
-      font-weight: 700;
-      opacity: 0.92;
-    }
-    .calib-rightHint {
-      margin: 0;
-      font-size: 11px;
-      opacity: 0.78;
-      line-height: 1.35;
-    }
-    .calib-rightStack { display: flex; flex-direction: column; gap: 8px; }
-    .calib-rightRow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-    .calib-rightRow .input { flex: 1; min-width: 0; }
-    #calibZoomReadout { min-width: 3.5em; font-variant-numeric: tabular-nums; font-size: 12px; }
-    .calib-obsZoomRow { display: flex; align-items: center; gap: 8px; }
-    #calibObsZoomSlider { flex: 1; min-width: 0; }
-    /* Banner über der Vorschau, ohne Layout zu verändern (kein Verschieben des Screenshots). */
     #calibStageRow {
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
       position: relative;
     }
     .calib-wizardBanner {
@@ -80,108 +50,134 @@
       box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
       text-shadow: 0 1px 14px rgba(0, 0, 0, 0.9);
     }
-    .calib-wizardBanner[hidden] { display: none !important; }
-    .calib-catGrid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
+    .calib-wizardBanner[hidden] {
+      display: none !important;
     }
-    .calib-catGrid .calib-aiBtn { width: 100%; box-sizing: border-box; }
-    .calib-catBtnActive {
-      border-color: rgba(255, 220, 80, 0.95) !important;
-      box-shadow: 0 0 0 2px rgba(255, 220, 80, 0.35);
+    .calib-zoomHud {
+      position: absolute;
+      bottom: 14px;
+      right: 14px;
+      z-index: 40;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 220px;
+      max-width: min(92vw, 320px);
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(8, 12, 20, 0.82);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
+      pointer-events: auto;
+      backdrop-filter: blur(8px);
+    }
+    .calib-catNav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+    }
+    .calib-catNav .btnMini {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .calib-catLabel {
+      flex: 1;
+      text-align: center;
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      opacity: 0.95;
+    }
+    .calib-zoomHudLabel {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      opacity: 0.92;
+    }
+    #calibObsZoomSlider {
+      width: 100%;
+      accent-color: var(--accent, #19c7ff);
+    }
+    .calib-zoomHudReadout {
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      opacity: 0.9;
+      text-align: right;
+    }
+    .calib-applyHud {
+      position: absolute;
+      bottom: 14px;
+      left: 14px;
+      z-index: 40;
+      pointer-events: auto;
+    }
+    .calib-applyHud .btnMini {
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+    #calibFallbackWrap.calib-fallbackWrap {
+      position: absolute;
+      left: 10px;
+      bottom: 56px;
+      right: auto;
+      max-width: min(96%, 360px);
+      z-index: 35;
+      margin: 0;
+    }
+    #calibStatus.calib-statusBar {
+      flex-shrink: 0;
+      margin: 0;
+      padding: 8px 12px 10px;
+      font-size: 11px;
+      line-height: 1.35;
+      color: var(--muted, rgba(233, 238, 247, 0.68));
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      min-height: 2.5em;
+      box-sizing: border-box;
     }
   </style>
 </head>
 <body>
-  <div id="calibRoot" class="calib-rootSplit">
-    <div id="calibLeftCol">
-      <div class="calib-stage calib-stageFill" id="calibStageRow">
-        <div id="calibWizardBanner" class="calib-wizardBanner" hidden aria-live="polite"></div>
-        <div class="calib-imgShell" id="calibImgShell">
-          <div class="calib-zoomInner" id="calibZoomInner">
-            <img class="calib-img" id="calibImg" alt="Vorschau" />
-            <svg class="calib-layoutSvg" id="calibLayoutSvg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
+  <div id="calibRoot">
+    <div class="calib-stage calib-stageFill" id="calibStageRow">
+      <div id="calibWizardBanner" class="calib-wizardBanner" hidden aria-live="polite"></div>
+      <div class="calib-imgShell" id="calibImgShell">
+        <div class="calib-zoomInner" id="calibZoomInner">
+          <img class="calib-img" id="calibImg" alt="Vorschau" />
+          <svg class="calib-layoutSvg" id="calibLayoutSvg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
+        </div>
+        <div class="calib-reticle" id="calibReticle"></div>
+        <div class="calib-toolbar">
+          <button type="button" class="btnMini" id="btnCalibShot">Aktualisieren</button>
+          <button type="button" class="btnMini" id="calibFs">Vollbild</button>
+        </div>
+        <div class="calib-applyHud" id="calibApplyHud">
+          <button type="button" class="btn primary btnMini" id="btnCalibApplyFilters">Filter anwenden</button>
+        </div>
+        <div class="calib-zoomHud" id="calibZoomHud" aria-label="Kategorie und Zoom">
+          <div class="calib-catNav" role="group" aria-label="Kategorie wechseln">
+            <button type="button" class="btnMini" id="btnCalibCatPrev">← Zurück</button>
+            <span class="calib-catLabel" id="calibCatLabel">Triple</span>
+            <button type="button" class="btnMini" id="btnCalibCatNext">Weiter →</button>
           </div>
-          <div class="calib-reticle" id="calibReticle"></div>
-          <div class="calib-toolbar">
-            <button type="button" class="btnMini" id="calibFs">Vollbild</button>
-          </div>
+          <span class="calib-zoomHudLabel">Zoom</span>
+          <input type="range" id="calibObsZoomSlider" min="50" max="400" step="1" value="100" />
+          <span id="calibZoomReadout" class="calib-zoomHudReadout">100 %</span>
         </div>
       </div>
-    </div>
-    <div id="calibRightCol">
-      <p class="calib-rightTitle">Kalibrierung</p>
-      <p class="calib-rightHint">Standard: <strong>PGM</strong> in Basis-Auflösung — Klicks werden über die Szenen-Position der Ziel-Quelle in <strong>OBS-Quellen-Koordinaten</strong> umgerechnet (Bull/Treffer sollten wieder stimmen). Alternative: „volle Ziel-Quelle“ ohne Umrechnung.</p>
-      <label class="label" for="calibPreviewFromSource" style="margin:0;display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-weight:normal;">
-        <input type="checkbox" id="calibPreviewFromSource" style="margin-top:3px;flex-shrink:0;" />
-        <span>Volles Bild der Ziel-Quelle statt Canvas (für exakte Move-Filter-Koordinaten)</span>
-      </label>
-
-      <div class="calib-rightStack">
-        <button type="button" class="btnMini" id="btnCalibShot" style="width:100%;">Aktualisieren</button>
-      </div>
-
-      <div class="calib-sideDivider"></div>
-
-      <p class="calib-sideTitle" style="margin:0;">Punkte</p>
-      <p class="calib-sideHint">Export/Import als JSON-Datei; „Aus Einstellungen“ lädt die zuletzt in der Extension gespeicherte Punktlage.</p>
-      <div class="calib-rightStack">
-        <button type="button" class="btnMini" id="btnCalibExportPoints" style="width:100%;">Punkte exportieren (JSON)</button>
-        <button type="button" class="btnMini" id="btnCalibImportPoints" style="width:100%;">Punkte importieren …</button>
-        <input type="file" id="calibPointsJsonFile" accept=".json,application/json" hidden />
-        <button type="button" class="btnMini" id="btnCalibLoadFromSettings" style="width:100%;">Aus Einstellungen laden</button>
-      </div>
-
-      <div class="calib-rightStack">
-        <button type="button" class="btnMini" id="btnCalibSave" style="width:100%;">In Extension speichern</button>
-        <button type="button" class="btn primary btnMini" id="btnCalibApplyObs" style="width:100%;">In OBS schreiben</button>
-      </div>
-
-      <div class="calib-sideDivider"></div>
-
-      <p class="calib-sideTitle" style="margin:0;">OBS-Zoom</p>
-      <div class="calib-obsZoomRow">
-        <input type="range" id="calibObsZoomSlider" min="50" max="400" step="1" value="100" />
-        <span id="calibZoomReadout">100 %</span>
-      </div>
-      <p class="calib-sideHint">Skalierung der <strong>Zoom-Stärke</strong> in den Move-Filtern (100 = wie in OBS eingestellt).</p>
-
-      <div class="calib-sideDivider"></div>
-
-      <p class="calib-sideTitle" style="margin:0;">Filter in OBS</p>
-      <p class="calib-sideHint">Move-Source-Filter hängen an der <strong>Szene</strong>; <strong>Ziel-Quelle</strong> ist die Game Capture (o. Ä.), deren Bild du kalibrierst und die pro Treffer gezoomt wird.</p>
-      <div class="calib-rightStack">
-        <label class="label" for="calibSceneName" style="margin:0;">Szene</label>
-        <input class="input" id="calibSceneName" type="text" autocomplete="off" placeholder="z. B. Szene 1" />
-        <label class="label" for="calibTargetSource" style="margin:0;">Ziel-Quelle</label>
-        <input class="input" id="calibTargetSource" type="text" autocomplete="off" placeholder="z. B. Game Capture" />
-        <button type="button" class="btnMini" id="btnCalibCreateMoveFilters" style="width:100%;">Move-Filter anlegen</button>
-        <button type="button" class="btnMini" id="btnCalibTuneFilters" style="width:100%;">Filter anpassen (Zoom)</button>
-      </div>
-
-      <div class="calib-sideDivider"></div>
-
-      <p class="calib-sideTitle" style="margin:0;">Felder setzen</p>
-      <p class="calib-sideHint">Kategorie wählen, dann nacheinander auf die Scheibe klicken — <strong>im Uhrzeigersinn</strong> wie auf der Scheibe (z. B. T20, T1, T18 …). Gleiche Kategorie erneut = Modus beenden. Esc = Abbruch.</p>
-      <div class="calib-catGrid">
-        <button type="button" class="calib-aiBtn calib-aiBtnPrimary" id="btnCalibCatTriple">Triple</button>
-        <button type="button" class="calib-aiBtn calib-aiBtnPrimary" id="btnCalibCatDouble">Double</button>
-        <button type="button" class="calib-aiBtn calib-aiBtnPrimary" id="btnCalibCatSingle">Single</button>
-        <button type="button" class="calib-aiBtn calib-aiBtnPrimary" id="btnCalibCatOther">Sonstiges</button>
-      </div>
-      <p class="calib-rightHint">Bei <strong>Sonstiges</strong> zuerst <strong>Main</strong> (Bull-Mitte) für Zoom. Danach Marker bei Bedarf ziehen, speichern / OBS.</p>
-
       <div id="calibFallbackWrap" class="calib-fallbackWrap" hidden>
-        <span id="calibFallbackHint">OBS fehlgeschlagen: Bild wählen oder erneut versuchen.</span>
+        <span id="calibFallbackHint">OBS-Vorschau fehlgeschlagen: Bild wählen oder erneut versuchen.</span>
         <div class="calib-fallbackRow">
-          <input id="calibFile" type="file" accept="image/*" style="max-width:100%;" />
+          <input id="calibFile" type="file" accept="image/*" style="max-width: 100%" />
           <button type="button" class="btnMini" id="calibRetryObs">OBS erneut</button>
         </div>
       </div>
-
-      <p id="calibStatus" class="hint" style="margin-top:auto;min-height:1.2em;padding-top:8px;border-top:1px solid rgba(127,127,127,.2);" aria-live="polite"></p>
     </div>
+    <p id="calibStatus" class="calib-statusBar" aria-live="polite"></p>
   </div>
   <script src="dartboard-layout.js"></script>
   <script src="obszoom-calib.js"></script>

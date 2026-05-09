@@ -698,6 +698,43 @@
     return { sceneName, targetSourceName, applied, errors };
   }
 
+  /**
+   * Ziel-`pos`/`scale` fuer Move-Filter aus aktuellem Szenen-Item (gleiche Formel wie
+   * `applyObsZoomCalibration` bei Mittelpunkt 0.5/0.5, Staerke 150, Zoom 100%).
+   * So kann `transform: true` bleiben, ohne dass OBS-Defaults die Quelle verschieben.
+   * @param {Record<string, unknown>} tr `GetSceneItemTransform`
+   * @returns {{ transform: boolean, pos: Record<string, unknown>, scale: Record<string, unknown> } | null}
+   */
+  function buildMoveFilterSnapFromSceneItemTransform(tr) {
+    if (!tr || typeof tr !== "object") return null;
+    const tw = Number(tr.width);
+    const th = Number(tr.height);
+    const w = Number.isFinite(tw) && tw > 1 ? tw : 1920;
+    const h = Number.isFinite(th) && th > 1 ? th : 1080;
+    const baseX = Number(tr.positionX);
+    const baseY = Number(tr.positionY);
+    const bx = Number.isFinite(baseX) ? baseX : 0;
+    const by = Number.isFinite(baseY) ? baseY : 0;
+    const baseSx = Number(tr.scaleX);
+    const baseSy = Number(tr.scaleY);
+    const sx0 = Number.isFinite(baseSx) && baseSx > 0 ? baseSx : 100;
+    const sy0 = Number.isFinite(baseSy) && baseSy > 0 ? baseSy : 100;
+    const strength = 150;
+    const k = strength / 150;
+    const zoomMul = 1;
+    const newSx = sx0 * zoomMul;
+    const newSy = sy0 * zoomMul;
+    const nx = 0.5;
+    const ny = 0.5;
+    const newX = bx + (0.5 - nx) * w * k;
+    const newY = by + (0.5 - ny) * h * k;
+    return {
+      transform: true,
+      pos: { x: newX, y: newY, x_sign: "=", y_sign: "=" },
+      scale: { x: newSx, y: newSy, x_sign: "=", y_sign: "=" }
+    };
+  }
+
   async function getObsInputDetails(inputName) {
     const targetInput = String(inputName || "").trim();
     if (!targetInput) return null;
@@ -751,14 +788,54 @@
       easing_function_match: easingFunction
     };
 
+    let snapFromScene = null;
+    try {
+      const sceneItemId = await getObsSceneItemId(targetScene, targetSource);
+      const tr = await getObsSceneItemTransform(targetScene, sceneItemId);
+      snapFromScene = buildMoveFilterSnapFromSceneItemTransform(tr);
+    } catch (err) {
+      debugObs("OBS move filter create: scene item transform skipped", {
+        sceneName: targetScene,
+        sourceName: targetSource,
+        error: String(err?.message || err || "unknown")
+      });
+    }
+    /** Mit Snap: `transform: true` + pos/scale = aktuelle Quelle (wie „Get Transform“). Ohne Snap: kein Ziel → `transform: false` gegen OBS-Default-Sprung. */
+    const createFilterSettings = snapFromScene
+      ? { ...nextFilterSettings, ...snapFromScene }
+      : { ...nextFilterSettings, transform: false };
+
     for (const filterName of desiredNames) {
       try {
         if (existingByName.has(filterName)) {
           if (mode === "create") continue;
+          let mergedSettings = nextFilterSettings;
+          try {
+            const detail = await sendObsRequestAwait(
+              "GetSourceFilter",
+              { sourceName: targetScene, filterName },
+              5000
+            );
+            let prev =
+              detail?.responseData?.filterSettings && typeof detail.responseData.filterSettings === "object"
+                ? cloneJsonValue(detail.responseData.filterSettings)
+                : {};
+            if (!prev || typeof prev !== "object" || !Object.keys(prev).length) {
+              const listItem = existingByName.get(filterName);
+              const fromList =
+                listItem?.filterSettings && typeof listItem.filterSettings === "object"
+                  ? cloneJsonValue(listItem.filterSettings)
+                  : {};
+              if (fromList && typeof fromList === "object" && Object.keys(fromList).length) prev = fromList;
+            }
+            mergedSettings = mergeFilterSettings(prev, nextFilterSettings);
+          } catch (_) {
+            mergedSettings = nextFilterSettings;
+          }
           await sendObsRequestAwait("SetSourceFilterSettings", {
             sourceName: targetScene,
             filterName,
-            filterSettings: nextFilterSettings,
+            filterSettings: mergedSettings,
             overlay: true
           }, 5000);
           updated += 1;
@@ -768,7 +845,7 @@
             sourceName: targetScene,
             filterName,
             filterKind: "move_source_filter",
-            filterSettings: nextFilterSettings
+            filterSettings: createFilterSettings
           }, 5000);
           created += 1;
         }
@@ -959,6 +1036,85 @@
       sources,
       filters
     };
+  }
+
+  /**
+   * Kompaktes JSON nur mit Move-Filter-Einstellungen (ohne Quellen-Snapshot) — Save im Popup.
+   * @returns {Promise<{ type: string, schemaVersion: number, sceneName: string, exportedAt: string, filters: object[] }>}
+   */
+  async function exportObsMoveFilterSettings(sceneName) {
+    const full = await getObsMoveFilterBackup(sceneName);
+    const filters = (Array.isArray(full.filters) ? full.filters : []).map((f) => ({
+      filterName: String(f?.filterName || "").trim(),
+      filterKind: String(f?.filterKind || "move_source_filter").trim() || "move_source_filter",
+      filterEnabled: typeof f?.filterEnabled === "boolean" ? !!f.filterEnabled : true,
+      filterSettings:
+        f?.filterSettings && typeof f.filterSettings === "object" ? cloneJsonValue(f.filterSettings) : {}
+    }));
+    return {
+      type: "obszoom-move-filter-settings",
+      schemaVersion: 1,
+      sceneName: String(full.sceneName || sceneName || "").trim(),
+      exportedAt: String(full.exportedAt || new Date().toISOString()),
+      filters
+    };
+  }
+
+  /**
+   * Wendet `filterSettings` aus Save-JSON auf bestehende Filter der Szene an (keine neuen Quellen/Szenen).
+   * Akzeptiert auch volle Backups (`obszoom-move-filter-backup`), nutzt dann nur `filters`.
+   */
+  async function importObsMoveFilterSettings(doc) {
+    const sceneName = String(doc?.sceneName || "").trim();
+    const filtersIn = Array.isArray(doc?.filters) ? doc.filters : [];
+    if (!sceneName) throw new Error("missing_scene_name");
+    if (!filtersIn.length) throw new Error("missing_filters");
+    const connected = await ensureObsConnection();
+    if (!connected) throw new Error("obs_not_connected");
+
+    const listRes = await sendObsRequestAwait("GetSourceFilterList", { sourceName: sceneName }, 5000);
+    const existing = new Set(
+      (Array.isArray(listRes?.responseData?.filters) ? listRes.responseData.filters : [])
+        .map((x) => String(x?.filterName || "").trim())
+        .filter(Boolean)
+    );
+
+    let applied = 0;
+    const errors = [];
+    for (const f of filtersIn) {
+      const filterName = String(f?.filterName || "").trim();
+      if (!filterName) continue;
+      if (!existing.has(filterName)) {
+        errors.push({ filterName, error: "filter_not_on_scene" });
+        continue;
+      }
+      const raw =
+        f?.rawFilterSettings && typeof f.rawFilterSettings === "object"
+          ? f.rawFilterSettings
+          : f?.filterSettings && typeof f.filterSettings === "object"
+            ? f.filterSettings
+            : {};
+      const filterSettings = cloneJsonValue(raw);
+      try {
+        await sendObsRequestAwait(
+          "SetSourceFilterSettings",
+          { sourceName: sceneName, filterName, filterSettings, overlay: true },
+          5000
+        );
+        if (typeof f?.filterEnabled === "boolean") {
+          await sendObsRequestAwait(
+            "SetSourceFilterEnabled",
+            { sourceName: sceneName, filterName, filterEnabled: !!f.filterEnabled },
+            5000
+          );
+        }
+        applied += 1;
+      } catch (error) {
+        errors.push({ filterName, error: String(error?.message || error || "unknown_error") });
+      }
+    }
+    debugObs("OBS move filter settings import", { sceneName, applied, errors: errors.length });
+    return { sceneName, applied, errors };
   }
 
   async function importObsMoveFilterBackup(backup) {
@@ -1383,6 +1539,8 @@
   ADM.createObsMoveFilters = createObsMoveFilters;
   ADM.deleteObsMoveFilters = deleteObsMoveFilters;
   ADM.getObsMoveFilterBackup = getObsMoveFilterBackup;
+  ADM.exportObsMoveFilterSettings = exportObsMoveFilterSettings;
+  ADM.importObsMoveFilterSettings = importObsMoveFilterSettings;
   ADM.importObsMoveFilterBackup = importObsMoveFilterBackup;
   ADM.getObsMoveFilterNameList = getObsMoveFilterNameList;
   ADM.getObsSceneItems = getObsSceneItems;

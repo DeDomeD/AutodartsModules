@@ -1,7 +1,7 @@
 {
     "manifest_version":  3,
     "name":  "Autodart Modules",
-    "version":  "0.1.592",
+    "version":  "0.1.607",
     "icons":  {
                   "16":  "Main/assets/ICON.png",
                   "32":  "Main/assets/ICON.png",

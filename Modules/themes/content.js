@@ -21,10 +21,16 @@ let WEBSITE_THEME_STATE = {
   backgroundSize: "cover"
 };
 let WEBSITE_THEME_REAPPLY_TIMER = null;
+/** Mehrere `applyWebsiteTheme()` im selben Task → ein Lauf (weniger Flackern bei SPA-Updates). */
+let APPLY_WEBSITE_THEME_COALESCE = 0;
+let LAST_SENT_WEBSITE_THEME_CSS = null;
+let LAST_SENT_WEBSITE_THEME_AT = 0;
 let SELECTED_MARKER_OBSERVER = null;
 let SELECTED_MARKER_TIMER = null;
 /** Gedrosseltes `applyBuilderDataToDom` nach echten DOM-Strukturänderungen (nicht bei jedem Klassen-Toggle). */
 let BUILDER_LAYOUT_REAPPLY_TIMER = null;
+/** Erhöhen = alle ausstehenden `scheduleBuilderLayoutResync`-Timeouts ungültig (z. B. Wechsel zu nativem Autodarts). */
+let BUILDER_LAYOUT_RESYNC_GEN = 0;
 /** Nach Fenstergröße: Layout neu anwenden, px→UV migrieren, Überlappungen mildern. */
 let BUILDER_RESIZE_RECONCILE_TIMER = null;
 let lastKnownHref = String(location.href || "");
@@ -106,6 +112,21 @@ const BUILDER_HINT_MAIN =
 const BUILDER_HINT_SUB = "Strg + Z rückgängig · Esc = schließen";
 const BUILDER_HINT_SUB_STYLE_ID = "adm-theme-builder-hint-sub-style";
 const BUILDER_MAX_TILT_DEG = 62;
+/** Markiert `#ad-ext-player-display` / Spalten für Flex-Stabilisierung (kein Stretch der anderen Box beim Verschieben). */
+const BUILDER_PLAYER_FLEX_STAB = "data-adm-builder-flex-stab";
+/**
+ * `el.dataset.adSbBuilderX` → DOM `data-ad-sb-builder-x` (nicht `data-adm-builder-*`).
+ * Falsche Selektoren ließen z. B. `cleanupOrphanBuilderAppliedStyles` / `clearBuilderTargetMarks` ins Leere laufen
+ * oder Companion-`closest` scheitern — sichtbar als „springt zurück“ / falsche Treffer.
+ */
+const SEL_SB_BUILDER_APPLIED = "[data-ad-sb-builder-applied='1']";
+const SEL_SB_BUILDER_APPLIED_CROP = "[data-ad-sb-builder-applied='1'].adm-builder-has-crop";
+const SEL_SB_BUILDER_TARGET = "[data-ad-sb-builder-target='1']";
+const SEL_SB_BUILDER_COMPANION = "[data-ad-sb-builder-companion-for]";
+const SEL_SB_BUILDER_HAD_DISABLED = "[data-ad-sb-builder-had-disabled='1']";
+const SEL_SB_BUILDER_HAD_ANCHOR_DISABLED = "[data-ad-sb-builder-had-anchor-disabled='1']";
+const SEL_SB_BUILDER_HAD_ARIA_DISABLED = "[data-ad-sb-builder-had-aria-disabled='1']";
+const SEL_SB_BUILDER_HAD_PE_RESTORE = "[data-ad-sb-builder-had-pe-restore='1']";
 
 /**
  * Schlüssel für `ADM.galleryThumbStore` (IndexedDB) — pro Theme-ID ein Thumbnail.
@@ -350,12 +371,20 @@ function buildPlayAutodartsIoCssFromBuilderSnapshot(root) {
   return parts.join("\n");
 }
 
+function cancelBuilderLayoutResyncPending() {
+  BUILDER_LAYOUT_RESYNC_GEN += 1;
+}
+
 function scheduleBuilderLayoutResync() {
   if (!pathnameIndicatesWebsiteThemesPlayfield()) return;
+  if (!WEBSITE_THEME_STATE?.enabled) return;
+  BUILDER_LAYOUT_RESYNC_GEN += 1;
+  const gen = BUILDER_LAYOUT_RESYNC_GEN;
   const delays = [0, 140, 420, 1000, 1800];
   delays.forEach((ms) => {
     setTimeout(() => {
       try {
+        if (gen !== BUILDER_LAYOUT_RESYNC_GEN) return;
         if (!WEBSITE_THEME_STATE?.enabled) return;
         refreshBuilderTargets();
         applyBuilderDataToDom();
@@ -483,7 +512,7 @@ const BUILDER_PIN_OPTIONAL_KEYS = new Set([
   "board-calibrate",
   "action-cancel"
 ]);
-const BUILDER_DEFAULT_ALIGNMENT_THEMES = new Set(["classic", "hue", "minimal"]);
+const BUILDER_DEFAULT_ALIGNMENT_THEMES = new Set(["classic", "hue", "minimal", "autodarts-minus"]);
 
 function parseThemeBuilderTargets(raw) {
   try {
@@ -518,11 +547,34 @@ const FALLBACK_THEME_SETS = {
       css: `
         body{background:linear-gradient(180deg, #2f3f8d 0%, #2c5fad 55%, #245aa3 100%) !important;}
       `
+    },
+    /** Bisheriger Extension-„Werkreset“-Look (Gradient + gemeinsames Theme-CSS) — nicht vanilla play.autodarts.io. */
+    {
+      id: "autodarts-minus",
+      label: "AutodartsMinus",
+      author: "DeDomeD",
+      arenaPrimaryHue: 210,
+      arenaSecondaryHue: 155,
+      arenaTertiaryHue: 125,
+      css: `
+        body{background:linear-gradient(180deg, #2f3f8d 0%, #2c5fad 55%, #245aa3 100%) !important;}
+      `
     }
   ],
   vertical: [
     {
       id: "stack",
+      css: `
+        body{background:linear-gradient(180deg, #1f2b54 0%, #2e4e89 52%, #2f6aaa 100%) !important;}
+      `
+    },
+    {
+      id: "autodarts-minus",
+      label: "AutodartsMinus",
+      author: "DeDomeD",
+      arenaPrimaryHue: 210,
+      arenaSecondaryHue: 155,
+      arenaTertiaryHue: 125,
       css: `
         body{background:linear-gradient(180deg, #1f2b54 0%, #2e4e89 52%, #2f6aaa 100%) !important;}
       `
@@ -685,7 +737,7 @@ function normalizeWebsiteThemeSettings(settings) {
   } catch {}
   const packBg = activeThemeRow && String(activeThemeRow.backgroundImageDataMatch || "").trim();
   const globalBgMatch = String(s.websiteBackgroundImageDataMatch || "").trim();
-  const backgroundImageDataMatch = packBg || globalBgMatch;
+  const resolvedBackgroundImageDataMatch = String(packBg || globalBgMatch || "").trim();
   const packSize = String(activeThemeRow?.backgroundSize || "").toLowerCase();
   const globalSize = String(s.websiteBackgroundSize || "cover").toLowerCase();
   const sizePick = (packSize === "contain" || packSize === "auto") ? packSize : globalSize;
@@ -696,11 +748,15 @@ function normalizeWebsiteThemeSettings(settings) {
       const x = String(id || "").toLowerCase();
       return x === "themes" || x === "websitedesign";
     });
+  const matchNativeAutodarts =
+    s.websiteMatchNativeAutodarts === true || String(s.websiteMatchNativeAutodarts || "").trim() === "1";
   const themesOn =
+    !matchNativeAutodarts &&
     s.themesEnabled !== false &&
     (s.themesEnabled === true || s.websiteDesignEnabled === true || themesInstalled);
   return {
     enabled: themesOn,
+    matchNativeAutodarts,
     layout,
     theme,
     arenaPrimaryHue: Number.isFinite(Number(activeThemeRow?.arenaPrimaryHue))
@@ -720,7 +776,7 @@ function normalizeWebsiteThemeSettings(settings) {
     customThemesVertical,
     themeBuilderTargets: parseThemeBuilderTargets(s.websiteThemeBuilderTargets),
     backgroundImageData: String(s.websiteBackgroundImageData || "").trim(),
-    backgroundImageDataMatch: String(s.websiteBackgroundImageDataMatch || "").trim(),
+    backgroundImageDataMatch: resolvedBackgroundImageDataMatch,
     backgroundImageDataMenu: String(s.websiteBackgroundImageDataMenu || "").trim(),
     backgroundSize
   };
@@ -795,6 +851,23 @@ function buildThemeBuilderChromeIsolationCss() {
   `;
 }
 
+/** Stylebot-JSON enthält manchmal `//`-Zeilen — das ist kein gültiges CSS-Kommentar. */
+function sanitizeThemeCssInvalidSlashComments(css) {
+  return String(css || "").replace(/^\s*\/\/[^\n]*$/gm, "");
+}
+
+/**
+ * Tobyleif-Pakete: Body-Hintergrund oft `:root:has(.css-… ) body` — Chakra-Hashes ändern sich, dann greift
+ * kein Bild mehr. Stattdessen wie unsere Hintergrund-Logik: Match-Ansicht über `#ad-ext-player-display`.
+ */
+function patchStylebotObsoleteRootBodyBackgroundSelectors(css) {
+  let out = String(css || "");
+  if (!/:root:has\(\.css-[a-z0-9]+\)\s*body\s*\{/i.test(out)) return out;
+  out = out.replace(/:root:has\(\.css-[a-z0-9]+\)\s*body\s*\{/gi, "html:has(#ad-ext-player-display) body {");
+  out = out.replace(/:root:not\(:has\(\.css-[a-z0-9]+\)\)\s*body\s*\{/gi, "html:not(:has(#ad-ext-player-display)) body {");
+  return out;
+}
+
 function buildThemeCss(cfg) {
   const accent = "#19c7ff";
   const accentSoft = "rgba(25,199,255,.25)";
@@ -804,6 +877,7 @@ function buildThemeCss(cfg) {
       --adm-accent:${accent};
       --adm-accent-soft:${accentSoft};
       --adm-border:rgba(255,255,255,.14);
+      --adm-calc-board-stroke:var(--adm-border);
       --adm-text:#eaf1ff;
       --adm-arena-primary-h:${cfg.arenaPrimaryHue};
       --adm-arena-secondary-h:${cfg.arenaSecondaryHue};
@@ -912,7 +986,7 @@ function buildThemeCss(cfg) {
       right:0;
       bottom:0;
       width:1px;
-      background:rgba(255,255,255,0.88);
+      background:var(--adm-calc-board-stroke) !important;
       pointer-events:none;
       z-index:1;
     }
@@ -940,22 +1014,29 @@ function buildThemeCss(cfg) {
 
   const themeCfg = findTheme(cfg.layout, cfg.theme);
   const layoutCss = cfg.layout === "vertical" ? verticalLayout : horizontalLayout;
-  const themeCss = String(themeCfg?.css || "");
+  const themeIdLower = String(cfg.theme || "").toLowerCase();
+  const stylebotPack =
+    themeIdLower === "mrjames-ad-template" || isStylebotPackThemeRow(themeCfg);
+  let themeCss = String(themeCfg?.css || "");
+  if (stylebotPack) {
+    themeCss = sanitizeThemeCssInvalidSlashComments(themeCss);
+    themeCss = patchStylebotObsoleteRootBodyBackgroundSelectors(themeCss);
+  }
   const customBg = buildCustomBackgroundCss(cfg);
+  /* MrJames: sehr GPU-lastig — fixed-Background triggert mit vielen Animationen oft Graublinken (Chrome). */
+  const stylebotBgAttachment =
+    themeIdLower === "mrjames-ad-template" || themeIdLower.startsWith("mrjames-") ? "scroll" : "fixed";
   const stylebotBgFit = isStylebotPackThemeRow(themeCfg)
     ? `
     html,body{
       background-size:cover !important;
       background-position:center center !important;
       background-repeat:no-repeat !important;
-      background-attachment:fixed !important;
+      background-attachment:${stylebotBgAttachment} !important;
       min-height:100% !important;
     }
   `
     : "";
-  const themeIdLower = String(cfg.theme || "").toLowerCase();
-  const stylebotPack =
-    themeIdLower === "mrjames-ad-template" || isStylebotPackThemeRow(themeCfg);
   /* Stylebot-like packs: helper (cover/fit) first, then full theme CSS, then user customBg last. */
   const midTail = stylebotPack
     ? `${stylebotBgFit}${themeCss}${customBg}`
@@ -2033,11 +2114,11 @@ function blockBuilderEvent(ev) {
 }
 
 function clearBuilderTargetMarks() {
-  document.querySelectorAll("[data-adm-builder-target='1']").forEach((el) => {
+  document.querySelectorAll(SEL_SB_BUILDER_TARGET).forEach((el) => {
     delete el.dataset.adSbBuilderTarget;
     delete el.dataset.adSbBuilderKey;
   });
-  document.querySelectorAll("[data-adm-builder-companion-for]").forEach((el) => {
+  document.querySelectorAll(SEL_SB_BUILDER_COMPANION).forEach((el) => {
     delete el.dataset.adSbBuilderCompanionFor;
   });
 }
@@ -2557,25 +2638,25 @@ function releaseDisabledForBuilderHit(el) {
 }
 
 function restoreBuilderReleasedDisabledState() {
-  document.querySelectorAll("[data-adm-builder-had-disabled='1']").forEach((el) => {
+  document.querySelectorAll(SEL_SB_BUILDER_HAD_DISABLED).forEach((el) => {
     try {
       if (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) el.disabled = true;
       delete el.dataset.adSbBuilderHadDisabled;
     } catch {}
   });
-  document.querySelectorAll("[data-adm-builder-had-anchor-disabled='1']").forEach((el) => {
+  document.querySelectorAll(SEL_SB_BUILDER_HAD_ANCHOR_DISABLED).forEach((el) => {
     try {
       el.setAttribute("disabled", "");
       delete el.dataset.adSbBuilderHadAnchorDisabled;
     } catch {}
   });
-  document.querySelectorAll("[data-adm-builder-had-aria-disabled='1']").forEach((el) => {
+  document.querySelectorAll(SEL_SB_BUILDER_HAD_ARIA_DISABLED).forEach((el) => {
     try {
       el.setAttribute("aria-disabled", "true");
       delete el.dataset.adSbBuilderHadAriaDisabled;
     } catch {}
   });
-  document.querySelectorAll("[data-adm-builder-had-pe-restore='1']").forEach((el) => {
+  document.querySelectorAll(SEL_SB_BUILDER_HAD_PE_RESTORE).forEach((el) => {
     try {
       el.style.removeProperty("pointer-events");
       delete el.dataset.adSbBuilderHadPeRestore;
@@ -3268,6 +3349,72 @@ function stripBuilderAppliedFromElement(el) {
   } catch {}
 }
 
+function clearPlayerDisplayFlexStabilizer() {
+  try {
+    document.querySelectorAll(`[${BUILDER_PLAYER_FLEX_STAB}]`).forEach((node) => {
+      if (!isBuilderElement(node)) return;
+      const role = node.getAttribute(BUILDER_PLAYER_FLEX_STAB);
+      node.removeAttribute(BUILDER_PLAYER_FLEX_STAB);
+      if (role === "wrap") {
+        node.style.removeProperty("align-items");
+      } else if (role === "item") {
+        ["align-self", "flex-grow", "flex-shrink", "flex-basis", "min-height"].forEach((p) => {
+          try {
+            node.style.removeProperty(p);
+          } catch {}
+        });
+      }
+    });
+  } catch {}
+}
+
+/**
+ * Verhindert, dass bei zwei Spieler-Spalten unter `#ad-ext-player-display` die nicht bewegte Box
+ * per Flex-Stretch die volle Zeilenhöhe übernimmt (typisch wenn die andere Spalte `position:fixed` hat).
+ */
+function applyPlayerDisplayFlexStabilizerIfNeeded() {
+  clearPlayerDisplayFlexStabilizer();
+  const wrap = document.querySelector("#ad-ext-player-display");
+  if (!isBuilderElement(wrap)) return;
+  const left = getTargetByKey("player-score-left")?.el;
+  const right = getTargetByKey("player-score-right")?.el;
+  if (!isBuilderElement(left) || !isBuilderElement(right)) return;
+  if (!wrap.contains(left) || !wrap.contains(right)) return;
+  let st;
+  try {
+    st = getComputedStyle(wrap);
+  } catch {
+    return;
+  }
+  if (st.display !== "flex" && st.display !== "inline-flex") return;
+
+  const directChildContaining = (el) => {
+    let cur = el;
+    while (cur && cur.parentElement && cur.parentElement !== wrap) {
+      cur = cur.parentElement;
+    }
+    return cur && cur.parentElement === wrap ? cur : null;
+  };
+  const dl = directChildContaining(left);
+  const dr = directChildContaining(right);
+  if (!dl || !dr) return;
+
+  wrap.setAttribute(BUILDER_PLAYER_FLEX_STAB, "wrap");
+  wrap.style.setProperty("align-items", "flex-start", "important");
+
+  const markItem = (node) => {
+    if (!isBuilderElement(node)) return;
+    node.setAttribute(BUILDER_PLAYER_FLEX_STAB, "item");
+    node.style.setProperty("align-self", "flex-start", "important");
+    node.style.setProperty("flex-grow", "0", "important");
+    node.style.setProperty("flex-shrink", "0", "important");
+    node.style.setProperty("flex-basis", "auto", "important");
+    node.style.setProperty("min-height", "0", "important");
+  };
+  markItem(dl);
+  if (dr !== dl) markItem(dr);
+}
+
 /**
  * Shell um Canvas/Video finden, wenn `.showAnimations` fehlt (Layout-Varianten).
  */
@@ -3779,7 +3926,7 @@ function getBuilderTargetFromNode(node) {
     }
     cur = cur.parentElement;
   }
-  const comp = node.closest("[data-adm-builder-companion-for]");
+  const comp = node.closest(SEL_SB_BUILDER_COMPANION);
   if (comp) {
     const masterKey = String(comp.dataset.adSbBuilderCompanionFor || "").trim();
     if (!masterKey) return null;
@@ -4308,11 +4455,11 @@ function isBuilderCropFrameTurnHighlight(el) {
 
 /**
  * Nur Crop-Rahmen (Spieler am Zug) — ohne vollen `applyBuilderDataToDom`.
- * Sonst kämpft React/Chakra ständig mit unseren Inline-Transforms (`style` vs. `data-adm-builder-original-style`).
+ * Sonst kämpft React/Chakra ständig mit unseren Inline-Transforms (`style` vs. `data-ad-sb-builder-original-style`).
  */
 function refreshBuilderCropFrameTurnHighlights() {
   if (!pathnameIndicatesWebsiteThemesPlayfield()) return;
-  const nodes = document.querySelectorAll("[data-adm-builder-applied='1'].adm-builder-has-crop");
+  const nodes = document.querySelectorAll(SEL_SB_BUILDER_APPLIED_CROP);
   nodes.forEach((el) => {
     if (!isBuilderElement(el)) return;
     const turn = isBuilderCropFrameTurnHighlight(el);
@@ -4432,7 +4579,6 @@ function reconcileBuilderLayoutForViewportSize() {
   }
   applyBuilderDataToDom();
   clampBuilderUvRectsToViewport();
-  applyBuilderDataToDom();
 
   refreshBuilderSelectionBox();
   scheduleBuilderLayoutResync();
@@ -4624,15 +4770,25 @@ function applyBuilderEntryToElement(el, entry) {
 }
 
 function clearBuilderAppliedStyles() {
-  const nodes = document.querySelectorAll("[data-adm-builder-applied='1']");
+  clearPlayerDisplayFlexStabilizer();
+  const nodes = document.querySelectorAll(SEL_SB_BUILDER_APPLIED);
   nodes.forEach((el) => stripBuilderAppliedFromElement(el));
 }
 
 function cleanupOrphanBuilderAppliedStyles() {
-  const nodes = document.querySelectorAll("[data-adm-builder-applied='1']");
+  const nodes = document.querySelectorAll(SEL_SB_BUILDER_APPLIED);
   nodes.forEach((el) => {
     let key = String(el.dataset.adSbBuilderKey || "");
     if (!key && el.dataset.adSbDartboardGlow === "1") key = "dartboard";
+    if ((!key || !BUILDER_DATA?.[key]) && Array.isArray(BUILDER_TARGETS)) {
+      const hit = BUILDER_TARGETS.find((t) => t?.el === el);
+      if (hit?.key && BUILDER_DATA?.[String(hit.key)]) {
+        key = String(hit.key);
+        try {
+          el.dataset.adSbBuilderKey = key;
+        } catch {}
+      }
+    }
     if (!key || !BUILDER_DATA?.[key]) {
       try {
         el.classList.remove("adm-builder-has-crop");
@@ -4665,9 +4821,8 @@ function applyBuilderDataToDom() {
     switchBuilderDataForPlayModeIfNeeded();
   }
   if (isBuilderPointerTransformActive()) return;
-  // Wichtig: `refreshBuilderTargets` → `clearBuilderTargetMarks` entfernt `data-adm-builder-key`.
-  // Läuft `cleanupOrphanBuilderAppliedStyles` danach, wirkt jedes Ziel wie eine „Waise“ und wird auf
-  // Original-Styles zurückgesetzt → sichtbares Hin-und-Her mit den Builder-Transforms.
+  // Wichtig: `refreshBuilderTargets` → `clearBuilderTargetMarks` entfernt kurz `data-ad-sb-builder-key`.
+  // Darf `cleanupOrphanBuilderAppliedStyles` **danach** laufen, sonst wirkt jedes Ziel wie eine „Waise“.
   cleanupOrphanBuilderAppliedStyles();
   refreshBuilderTargets();
   const entries = BUILDER_DATA || {};
@@ -4712,6 +4867,7 @@ function applyBuilderDataToDom() {
   if (BUILDER_ACTIVE && pathnameIndicatesWebsiteThemesPlayfield()) {
     syncBuilderSelectedToCurrentTarget();
   }
+  applyPlayerDisplayFlexStabilizerIfNeeded();
 }
 
 function syncDartboardGlowVisibility() {
@@ -5011,6 +5167,20 @@ function saveBuilderDataToSettings() {
   } catch {}
 }
 
+/**
+ * Einstellungen nach „Alles zurücksetzen“: Extension injiziert **kein** Website-Theme mehr → wie natives Autodarts.
+ * (`websiteMatchNativeAutodarts` — kein `themesEnabled:false`, sonst bliebe die Injektion dauerhaft aus.)
+ * Vorheriges Extension-„Werk“-Aussehen ≈ Theme **AutodartsMinus** in der Galerie.
+ */
+function getWebsiteThemeNativeResetSettingsPatch() {
+  return {
+    websiteMatchNativeAutodarts: true,
+    websiteThemeBuilderEnabled: false,
+    websiteThemeBuilderData: "{}",
+    websiteHideLeftMenuByDefault: false
+  };
+}
+
 /** Gleiche Keys wie `Modules/themes/config.js` → `defaults` (Extension-Standard für die Website). */
 function getWebsiteThemeFactoryDefaults() {
   try {
@@ -5063,6 +5233,7 @@ function resetBuilderToDefaults() {
   try {
     BUILDER_PIN_KEYS_SEEN = new Set();
   } catch {}
+  BUILDER_SESSION_ACTIVE = false;
   BUILDER_SELECTED = null;
   BUILDER_SELECTED_SELECTOR = "";
   BUILDER_SELECTED_KEYS = [];
@@ -5086,35 +5257,57 @@ function resetBuilderToDefaults() {
     refreshBuilderTargets();
     ensureBuilderPinPanel();
     refreshBuilderSelectionBox();
+    scheduleSelectedMarkerUpdate();
+  };
+
+  const applyNativeResetState = (settings) => {
+    const factory = getWebsiteThemeFactoryDefaults();
+    const nativePatch = getWebsiteThemeNativeResetSettingsPatch();
+    const merged = { ...(settings || {}) };
+    for (const k of Object.keys(factory)) {
+      merged[k] = factory[k];
+    }
+    for (const k of Object.keys(nativePatch)) {
+      merged[k] = nativePatch[k];
+    }
+    return merged;
   };
 
   try {
     if (!chrome?.storage?.local) {
-      WEBSITE_THEME_STATE = normalizeWebsiteThemeSettings(getWebsiteThemeFactoryDefaults());
+      WEBSITE_THEME_STATE = normalizeWebsiteThemeSettings(applyNativeResetState(getWebsiteThemeFactoryDefaults()));
+      try {
+        localStorage.removeItem(MENU_STATE_KEY);
+      } catch {}
       flushWebsiteThemeInjectionAndDecorations();
       applyWebsiteTheme();
+      setBuilderActive(false);
       finishBuilderUiAfterThemeApply();
       return;
     }
     chrome.storage.local.get(["settings"], (items) => {
-      const settings = { ...(items?.settings || {}) };
-      const factory = getWebsiteThemeFactoryDefaults();
-      for (const k of Object.keys(factory)) {
-        settings[k] = factory[k];
-      }
+      const settings = applyNativeResetState(items?.settings || {});
       chrome.storage.local.set({ settings }, () => {
         void chrome.runtime?.lastError;
         WEBSITE_THEME_STATE = normalizeWebsiteThemeSettings(settings);
+        try {
+          localStorage.removeItem(MENU_STATE_KEY);
+        } catch {}
         flushWebsiteThemeInjectionAndDecorations();
         applyWebsiteTheme();
+        setBuilderActive(false);
         finishBuilderUiAfterThemeApply();
       });
     });
   } catch {
     try {
-      WEBSITE_THEME_STATE = normalizeWebsiteThemeSettings(getWebsiteThemeFactoryDefaults());
+      WEBSITE_THEME_STATE = normalizeWebsiteThemeSettings(applyNativeResetState(getWebsiteThemeFactoryDefaults()));
+      try {
+        localStorage.removeItem(MENU_STATE_KEY);
+      } catch {}
       flushWebsiteThemeInjectionAndDecorations();
       applyWebsiteTheme();
+      setBuilderActive(false);
       finishBuilderUiAfterThemeApply();
     } catch {}
   }
@@ -6289,6 +6482,15 @@ function onBuilderKeyDown(ev) {
 }
 
 function sendWebsiteThemeCss(css, attempt = 0) {
+  const next = String(css || "");
+  const now = Date.now();
+  if (
+    attempt === 0 &&
+    next === LAST_SENT_WEBSITE_THEME_CSS &&
+    now - LAST_SENT_WEBSITE_THEME_AT < 180
+  ) {
+    return;
+  }
   try {
     if (!chrome?.runtime?.sendMessage) {
       if (attempt >= 8) return;
@@ -6301,7 +6503,11 @@ function sendWebsiteThemeCss(css, attempt = 0) {
       (res) => {
         void chrome.runtime?.lastError;
         const ok = !!res?.ok;
-        if (ok) return;
+        if (ok) {
+          LAST_SENT_WEBSITE_THEME_CSS = next;
+          LAST_SENT_WEBSITE_THEME_AT = Date.now();
+          return;
+        }
         if (attempt >= 8) return;
         const delay = 160 + (attempt * 140);
         setTimeout(() => sendWebsiteThemeCss(css, attempt + 1), delay);
@@ -6353,8 +6559,16 @@ function clearWebsiteThemeDecorations() {
   removeMenuToggleButton();
 }
 
-function applyWebsiteTheme() {
+function applyWebsiteThemeInternal() {
   const cfg = WEBSITE_THEME_STATE;
+  if (!cfg.enabled) {
+    try {
+      cancelThemeReapplyBurst();
+    } catch {}
+    try {
+      cancelBuilderLayoutResyncPending();
+    } catch {}
+  }
   const activeTheme = findTheme(cfg.layout, cfg.theme);
   const css = cfg.enabled ? buildThemeCss(cfg) : "";
   const activeThemeId = String(cfg.theme || "").toLowerCase();
@@ -6414,8 +6628,30 @@ function applyWebsiteTheme() {
   }
 }
 
+function applyWebsiteTheme() {
+  const id = (APPLY_WEBSITE_THEME_COALESCE += 1);
+  queueMicrotask(() => {
+    if (id !== APPLY_WEBSITE_THEME_COALESCE) return;
+    applyWebsiteThemeInternal();
+  });
+}
+
 function startThemeBuilderSession() {
   let emptyLayoutWarning = false;
+  try {
+    if (chrome?.storage?.local) {
+      chrome.storage.local.get(["settings"], (items) => {
+        const settings = { ...(items?.settings || {}) };
+        if (settings.websiteMatchNativeAutodarts) {
+          delete settings.websiteMatchNativeAutodarts;
+          chrome.storage.local.set({ settings }, () => void chrome.runtime?.lastError);
+        }
+      });
+    }
+  } catch {}
+  try {
+    delete WEBSITE_THEME_STATE.matchNativeAutodarts;
+  } catch {}
   if (!WEBSITE_THEME_STATE.enabled) {
     WEBSITE_THEME_STATE.enabled = true;
   }
@@ -6506,6 +6742,11 @@ function updateSelectedMarkers() {
     clearSelectedMarkers();
     return;
   }
+  const cfg = WEBSITE_THEME_STATE;
+  if (!cfg?.enabled) {
+    clearSelectedMarkers();
+    return;
+  }
   const nodes = document.querySelectorAll(
     ".MuiToggleButton-root,.MuiButtonBase-root,.MuiButton-root,button,[role='button'],[role='radio'],[role='option'],[aria-pressed],[aria-selected],[aria-checked],[data-state]"
   );
@@ -6516,8 +6757,6 @@ function updateSelectedMarkers() {
     el.classList.toggle("adm-unselected-marker", option && !selected);
   });
   try {
-    const cfg = WEBSITE_THEME_STATE;
-    if (!cfg?.enabled) return;
     const activeThemeId = String(cfg.theme || "").toLowerCase();
     const keepDefaultAlignment = BUILDER_DEFAULT_ALIGNMENT_THEMES.has(activeThemeId) && !BUILDER_SESSION_ACTIVE;
     if (!keepDefaultAlignment) refreshBuilderCropFrameTurnHighlights();
@@ -6529,7 +6768,7 @@ function scheduleSelectedMarkerUpdate() {
   SELECTED_MARKER_TIMER = setTimeout(() => {
     SELECTED_MARKER_TIMER = null;
     updateSelectedMarkers();
-  }, 80);
+  }, 160);
 }
 
 function bindSelectedMarkerObserver() {
@@ -6553,10 +6792,24 @@ function bindSelectedMarkerObserver() {
   });
 }
 
+function cancelThemeReapplyBurst() {
+  if (WEBSITE_THEME_REAPPLY_TIMER) {
+    try {
+      clearInterval(WEBSITE_THEME_REAPPLY_TIMER);
+    } catch {}
+    WEBSITE_THEME_REAPPLY_TIMER = null;
+  }
+}
+
 function scheduleThemeReapplyBurst() {
-  if (WEBSITE_THEME_REAPPLY_TIMER) clearInterval(WEBSITE_THEME_REAPPLY_TIMER);
-  let remaining = 8;
+  if (!WEBSITE_THEME_STATE?.enabled) return;
+  cancelThemeReapplyBurst();
+  let remaining = 4;
   WEBSITE_THEME_REAPPLY_TIMER = setInterval(() => {
+    if (!WEBSITE_THEME_STATE?.enabled) {
+      cancelThemeReapplyBurst();
+      return;
+    }
     applyWebsiteTheme();
     scheduleSelectedMarkerUpdate();
     remaining -= 1;
@@ -6564,7 +6817,7 @@ function scheduleThemeReapplyBurst() {
       clearInterval(WEBSITE_THEME_REAPPLY_TIMER);
       WEBSITE_THEME_REAPPLY_TIMER = null;
     }
-  }, 450);
+  }, 600);
 }
 
 function loadWebsiteThemeFromStorage() {
@@ -6574,8 +6827,10 @@ function loadWebsiteThemeFromStorage() {
       const settings = items?.settings || {};
       WEBSITE_THEME_STATE = normalizeWebsiteThemeSettings(settings);
       applyWebsiteTheme();
-      scheduleThemeReapplyBurst();
-      scheduleBuilderLayoutResync();
+      if (WEBSITE_THEME_STATE.enabled) {
+        scheduleThemeReapplyBurst();
+        scheduleBuilderLayoutResync();
+      }
       scheduleSelectedMarkerUpdate();
     });
   } catch {}
@@ -6589,6 +6844,25 @@ function bindWebsiteThemeWatcher() {
     if (!next || typeof next !== "object") return;
     const prev = changes?.settings?.oldValue;
     try {
+      const themePickChanged =
+        prev &&
+        typeof prev === "object" &&
+        (prev.websiteTheme !== next.websiteTheme || prev.websiteLayout !== next.websiteLayout);
+      if (themePickChanged && next.websiteMatchNativeAutodarts) {
+        const cleaned = { ...next };
+        delete cleaned.websiteMatchNativeAutodarts;
+        chrome.storage.local.set({ settings: cleaned }, () => void chrome.runtime?.lastError);
+        WEBSITE_THEME_STATE = normalizeWebsiteThemeSettings(cleaned);
+        applyWebsiteTheme();
+        if (WEBSITE_THEME_STATE.enabled) {
+          scheduleThemeReapplyBurst();
+          scheduleBuilderLayoutResync();
+        }
+        scheduleSelectedMarkerUpdate();
+        return;
+      }
+    } catch {}
+    try {
       const wasShowByDefault = prev && prev.websiteHideLeftMenuByDefault === false;
       const nowHideByDefault = next.websiteHideLeftMenuByDefault !== false;
       if (wasShowByDefault && nowHideByDefault) {
@@ -6597,8 +6871,10 @@ function bindWebsiteThemeWatcher() {
     } catch {}
     WEBSITE_THEME_STATE = normalizeWebsiteThemeSettings(next);
     applyWebsiteTheme();
-    scheduleThemeReapplyBurst();
-    scheduleBuilderLayoutResync();
+    if (WEBSITE_THEME_STATE.enabled) {
+      scheduleThemeReapplyBurst();
+      scheduleBuilderLayoutResync();
+    }
     scheduleSelectedMarkerUpdate();
   });
 }

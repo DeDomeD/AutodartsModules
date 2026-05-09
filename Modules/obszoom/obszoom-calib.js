@@ -21,6 +21,8 @@
    * @type {null | { imgW: number, imgH: number, rect: { left: number, top: number, width: number, height: number }, sourceWidth: number, sourceHeight: number, cropLeft: number, cropRight: number, cropTop: number, cropBottom: number }}
    */
   let previewPlacement = null;
+  /** PGM: zuletzt erkannte Programm-Szene (für OBS-Placement — muss zur Vorschau passen). */
+  let lastProgramSceneName = "";
 
   const img = () => document.getElementById("calibImg");
   const layoutSvg = () => document.getElementById("calibLayoutSvg");
@@ -34,11 +36,14 @@
   let boardCenterU = 0.5;
   let boardCenterV = 0.5;
 
-  /** @type {Map<string, { u: number, v: number }>} */
+  /** @type {Map<string, { u: number, v: number, du?: number, dv?: number }>} — du/dv = Klick in Vorschau-UV (PGM), u/v = Quellen-UV für OBS */
   const filterUvByName = new Map();
 
   /** @type {{ name: string, pointerId: number } | null} */
   let dragState = null;
+  /** Nach Marker-Ziehen: ein folgender Klick auf die Shell sonst als nächstes Feld gewertet — unterdrücken. */
+  let markerDragMoved = false;
+  let skipNextShellClick = false;
   let renderMarkersQueued = false;
 
   /** null | "triple" | "double" | "single" | "other" — nacheinander Klicks auf die Scheibe */
@@ -46,6 +51,12 @@
   /** @type {string[]} */
   let fieldCalibNames = [];
   let fieldCalibIndex = 0;
+
+  const CATEGORY_ORDER = ["triple", "double", "single", "other"];
+  /** Aktuelle Position für Zurück/Weiter (0 = Triple … 3 = Sonstiges). */
+  let categoryRingIndex = 0;
+
+  let persistCalibTimer = null;
 
   function $(id) {
     return document.getElementById(id);
@@ -177,25 +188,112 @@
     }
   }
 
-  function syncCategoryButtonActive() {
-    const c = fieldCalibCategory;
-    $("btnCalibCatTriple")?.classList.toggle("calib-catBtnActive", c === "triple");
-    $("btnCalibCatDouble")?.classList.toggle("calib-catBtnActive", c === "double");
-    $("btnCalibCatSingle")?.classList.toggle("calib-catBtnActive", c === "single");
-    $("btnCalibCatOther")?.classList.toggle("calib-catBtnActive", c === "other");
+  function categoryLabelDe(cat) {
+    if (cat === "triple") return "Triple";
+    if (cat === "double") return "Double";
+    if (cat === "single") return "Single";
+    if (cat === "other") return "Sonstiges";
+    return String(cat || "");
   }
 
-  function syncCalibCategoryButtonsEnabled() {
+  function syncCategoryNav() {
     const im = img();
     const ok = !!im?.naturalWidth;
-    const t = $("btnCalibCatTriple");
-    const d = $("btnCalibCatDouble");
-    const s = $("btnCalibCatSingle");
-    const o = $("btnCalibCatOther");
-    if (t) t.disabled = !ok || SETTINGS.obsZoomIncludeTriples === false;
-    if (d) d.disabled = !ok || SETTINGS.obsZoomIncludeDoubles === false;
-    if (s) s.disabled = !ok || SETTINGS.obsZoomIncludeSingles === false;
-    if (o) o.disabled = !ok;
+    const cat =
+      fieldCalibCategory && CATEGORY_ORDER.includes(fieldCalibCategory)
+        ? fieldCalibCategory
+        : CATEGORY_ORDER[categoryRingIndex];
+    const lab = $("calibCatLabel");
+    if (lab) lab.textContent = categoryLabelDe(cat);
+    const prev = $("btnCalibCatPrev");
+    const next = $("btnCalibCatNext");
+    if (prev) prev.disabled = !ok;
+    if (next) next.disabled = !ok;
+  }
+
+  function refreshIdleBanner() {
+    if (fieldCalibCategory) return;
+    const im = img();
+    if (!im?.naturalWidth) return;
+    updateWizardBanner(
+      `${categoryLabelDe(CATEGORY_ORDER[categoryRingIndex])}: Mit „Zurück“ / „Weiter“ die Kategorie wechseln, dann nacheinander auf die Vorschau klicken. Grüne Punkte = gespeicherte Treffer.`
+    );
+  }
+
+  function schedulePersistCalib() {
+    if (persistCalibTimer) clearTimeout(persistCalibTimer);
+    persistCalibTimer = setTimeout(() => {
+      persistCalibTimer = null;
+      void (async () => {
+        try {
+          await flushPersistCalibImmediate();
+        } catch (e) {
+          setStatus(String(e?.message || e));
+        }
+      })();
+    }, 800);
+  }
+
+  /** Speichert Zoom/Stärke und — sobald Marker existieren — Punktlage (Merge Speicher + Map, keine layoutActive-Sperre). */
+  async function flushPersistCalibImmediate() {
+    if (persistCalibTimer) {
+      clearTimeout(persistCalibTimer);
+      persistCalibTimer = null;
+    }
+    const partial = {
+      obsZoomStrength: getObsZoomPanStrength(),
+      obsZoomCalibZoomPercent: getObsZoomPercent()
+    };
+    if (filterUvByName.size > 0) {
+      const merged = { ...parseStoredCalibPoints(), ...pointsMapForObs() };
+      partial.obsZoomCalibPointsJson = JSON.stringify(merged);
+    }
+    SETTINGS = await savePartial(partial);
+  }
+
+  function forceStartFieldCalibCategory(cat) {
+    const im = img();
+    if (!im?.naturalWidth) {
+      setStatus("Zuerst Vorschau laden (Aktualisieren).");
+      updateWizardBanner("");
+      return;
+    }
+    const idx = CATEGORY_ORDER.indexOf(cat);
+    if (idx >= 0) categoryRingIndex = idx;
+    const names = buildNamesForCategory(cat);
+    if (!names.length) {
+      setStatus(
+        `${categoryLabelDe(cat)} ist im Zoom-Modul deaktiviert — mit „Weiter“/„Zurück“ eine andere Kategorie.`
+      );
+      syncCategoryNav();
+      refreshIdleBanner();
+      return;
+    }
+    fieldCalibCategory = cat;
+    fieldCalibNames = names;
+    fieldCalibIndex = 0;
+    setCalibCaptureUi(true);
+    syncCategoryNav();
+    refreshFieldCalibBanner();
+    setStatus("");
+  }
+
+  function shiftCategoryRing(delta) {
+    if (!img()?.naturalWidth) {
+      setStatus("Zuerst Vorschau laden (Aktualisieren).");
+      return;
+    }
+    let idx = categoryRingIndex;
+    for (let step = 0; step < CATEGORY_ORDER.length; step += 1) {
+      idx = (idx + delta + CATEGORY_ORDER.length) % CATEGORY_ORDER.length;
+      const cat = CATEGORY_ORDER[idx];
+      if (buildNamesForCategory(cat).length > 0) {
+        categoryRingIndex = idx;
+        forceStartFieldCalibCategory(cat);
+        return;
+      }
+    }
+    setStatus("Keine Kategorie aktiv (Triple/Double/Single im Zoom-Modul prüfen).");
   }
 
   /** Standard-Scheibe im Uhrzeigersinn ab 20 oben (wie DartboardLayout). */
@@ -228,10 +326,14 @@
     return [];
   }
 
-  function fieldCalibHumanName(fn) {
+  /** Kurzer Hinweis im Banner: wo der Nutzer als Nächstes klicken soll. */
+  function fieldCalibInstruction(fn) {
     const up = String(fn || "").toUpperCase();
-    if (up === "MAIN") return "Main (Bull-Mitte)";
-    return String(fn);
+    if (up === "MAIN") return "Bitte auf die Bull-Mitte klicken (Main)";
+    if (up === "BULL") return "Bitte auf den Outer Bull klicken (Bull)";
+    if (up === "DBULL") return "Bitte auf den Double Bull klicken";
+    if (up === "MISS") return "Bitte auf den Miss-Bereich klicken";
+    return `Bitte auf ${fn} klicken`;
   }
 
   function refreshFieldCalibBanner() {
@@ -240,16 +342,8 @@
       return;
     }
     const nm = fieldCalibNames[fieldCalibIndex];
-    const catLabel =
-      fieldCalibCategory === "triple"
-        ? "Triple"
-        : fieldCalibCategory === "double"
-          ? "Double"
-          : fieldCalibCategory === "single"
-            ? "Single"
-            : "Sonstiges";
     updateWizardBanner(
-      `${catLabel}: Bitte ${fieldCalibHumanName(nm)} setzen (${fieldCalibIndex + 1} / ${fieldCalibNames.length})`
+      `${fieldCalibInstruction(nm)} — ${fieldCalibIndex + 1} von ${fieldCalibNames.length}`
     );
   }
 
@@ -258,9 +352,9 @@
     fieldCalibNames = [];
     fieldCalibIndex = 0;
     setCalibCaptureUi(false);
-    syncCategoryButtonActive();
-    updateWizardBanner("");
+    syncCategoryNav();
     if (clearStatus) setStatus("");
+    refreshIdleBanner();
   }
 
   function categoryDoneMessage(cat) {
@@ -269,31 +363,6 @@
     if (cat === "single") return "Alle Single-Felder gesetzt.";
     if (cat === "other") return "Sonstiges abgeschlossen (Main, Bull, D-Bull, Miss).";
     return "Kategorie fertig.";
-  }
-
-  function startFieldCalibCategory(cat) {
-    const im = img();
-    if (!im?.naturalWidth) {
-      setStatus("Zuerst Vorschau laden (Aktualisieren oder Bilddatei).");
-      return;
-    }
-    if (fieldCalibCategory === cat) {
-      cancelFieldCalibMode(true);
-      setStatus("Modus beendet.");
-      return;
-    }
-    const names = buildNamesForCategory(cat);
-    if (!names.length) {
-      setStatus("Diese Kategorie ist in den Einstellungen deaktiviert.");
-      return;
-    }
-    fieldCalibCategory = cat;
-    fieldCalibNames = names;
-    fieldCalibIndex = 0;
-    setCalibCaptureUi(true);
-    syncCategoryButtonActive();
-    refreshFieldCalibBanner();
-    setStatus("");
   }
 
   function eventToUv(imgEl, clientX, clientY) {
@@ -522,15 +591,28 @@
   function pointsMapForObs() {
     const o = {};
     filterUvByName.forEach((uv, k) => {
-      o[k] = { nx: uv.u, ny: uv.v };
+      const rec = { nx: uv.u, ny: uv.v };
+      if (Number.isFinite(uv.du)) rec.du = uv.du;
+      if (Number.isFinite(uv.dv)) rec.dv = uv.dv;
+      o[k] = rec;
     });
     return o;
   }
 
-  /** Für OBS: zuerst aktuelle Marker, sonst gespeicherte JSON-Punktlage. */
-  function pointsRecordForObsApply() {
-    const fromMap = pointsMapForObs();
-    if (Object.keys(fromMap).length > 0) return fromMap;
+  /** Nur nx/ny für OBS-WebSocket-Payload. */
+  function stripCalibPointsForObsPayload(record) {
+    const out = {};
+    for (const [k, p] of Object.entries(record || {})) {
+      if (!p || typeof p !== "object") continue;
+      if (Number.isFinite(Number(p.nx)) && Number.isFinite(Number(p.ny))) {
+        out[k] = { nx: Number(p.nx), ny: Number(p.ny) };
+      }
+    }
+    return out;
+  }
+
+  /** Aus Extension-Einstellungen: Record<filterName, { nx, ny, du?, dv? }> */
+  function parseStoredCalibPoints() {
     try {
       const raw = SETTINGS?.obsZoomCalibPointsJson || "{}";
       const obj = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -539,13 +621,45 @@
       const out = {};
       for (const [k, p] of Object.entries(map)) {
         if (p && Number.isFinite(Number(p.nx)) && Number.isFinite(Number(p.ny))) {
-          out[k] = { nx: Number(p.nx), ny: Number(p.ny) };
+          const rec = { nx: Number(p.nx), ny: Number(p.ny) };
+          if (Number.isFinite(Number(p.du))) rec.du = Number(p.du);
+          if (Number.isFinite(Number(p.dv))) rec.dv = Number(p.dv);
+          out[k] = rec;
         }
       }
       return out;
     } catch {
       return {};
     }
+  }
+
+  /** Nach frischer OBS-Placement: Quellen-UV aus gespeicherten Vorschau-Klicks neu berechnen. */
+  function recomputeAllCalibSourceUvFromDisplay() {
+    if (!previewUsesCanvasRemap()) return;
+    for (const [k, uv] of [...filterUvByName.entries()]) {
+      if (!Number.isFinite(uv.du) || !Number.isFinite(uv.dv)) continue;
+      const src = displayUvToSourceUv(uv.du, uv.dv);
+      filterUvByName.set(k, { ...uv, u: src.u, v: src.v, du: uv.du, dv: uv.dv });
+    }
+    scheduleRenderMarkers();
+  }
+
+  async function refreshPgmPlacementFromObs(im) {
+    const tgt = normalizeText(SETTINGS.obsZoomTargetSource);
+    const scene =
+      normalizeText(lastProgramSceneName) || normalizeText(SETTINGS.obsZoomSceneName);
+    await refreshPreviewPlacement(im, scene, tgt);
+  }
+
+  /**
+   * Für OBS: gespeicherte Punktlage + **Live-Marker** (Map überschreibt — nie nur alte Defaults,
+   * wenn der Nutzer schon Marker im Speicher hat).
+   */
+  function pointsRecordForObsApply() {
+    const stored = parseStoredCalibPoints();
+    const live = pointsMapForObs();
+    if (Object.keys(live).length === 0) return stored;
+    return { ...stored, ...live };
   }
 
   /**
@@ -557,14 +671,13 @@
     const persist = opts?.persist === true;
     const strength = getObsZoomPanStrength();
     const zoomPercent = getObsZoomPercent();
-    const sceneName =
-      normalizeText($("calibSceneName")?.value) || normalizeText(SETTINGS.obsZoomSceneName);
-    const targetSourceName =
-      normalizeText($("calibTargetSource")?.value) || normalizeText(SETTINGS.obsZoomTargetSource);
+    const sceneName = normalizeText(SETTINGS.obsZoomSceneName);
+    const targetSourceName = normalizeText(SETTINGS.obsZoomTargetSource);
     if (!sceneName || !targetSourceName) {
-      setStatus("Szene und Ziel-Quelle unter „Filter in OBS“ eintragen.");
+      setStatus("Szene und Ziel-Quelle im Zoom-Modul (Extension-Popup) eintragen — dann wirkt „Filter anwenden“.");
       return;
     }
+    const obsPoints = stripCalibPointsForObsPayload(pointsRecord);
     if (persist) {
       SETTINGS = await savePartial({
         obsZoomSceneName: sceneName,
@@ -580,7 +693,7 @@
         sceneName,
         targetSourceName,
         canvasMode: false,
-        points: pointsRecord,
+        points: obsPoints,
         strength,
         zoomPercent,
         includeSingles: SETTINGS.obsZoomIncludeSingles !== false,
@@ -611,23 +724,32 @@
     let n = 0;
     for (const [k, p] of Object.entries(map)) {
       if (p && Number.isFinite(Number(p.nx)) && Number.isFinite(Number(p.ny))) {
-        filterUvByName.set(k, { u: Number(p.nx), v: Number(p.ny) });
+        const u = Number(p.nx);
+        const v = Number(p.ny);
+        let du = Number(p.du);
+        let dv = Number(p.dv);
+        if (!Number.isFinite(du) || !Number.isFinite(dv)) {
+          const d = sourceUvToDisplayUv(u, v);
+          du = d.u;
+          dv = d.v;
+        }
+        filterUvByName.set(k, { u, v, du, dv });
         n += 1;
       }
     }
     if (n === 0) return false;
     const main = filterUvByName.get("Main");
     if (main) {
-      const d = sourceUvToDisplayUv(main.u, main.v);
-      boardCenterU = d.u;
-      boardCenterV = d.v;
+      boardCenterU = Number.isFinite(main.du) ? main.du : sourceUvToDisplayUv(main.u, main.v).u;
+      boardCenterV = Number.isFinite(main.dv) ? main.dv : sourceUvToDisplayUv(main.u, main.v).v;
     }
     layoutActive = true;
     updateZoomInnerOrigin();
     applyPreviewTransform();
     renderManualMarkers();
     refreshReticle();
-    syncCalibCategoryButtonsEnabled();
+    syncCategoryNav();
+    refreshIdleBanner();
     return true;
   }
 
@@ -641,39 +763,6 @@
     } catch {
       /* ignore */
     }
-  }
-
-  function syncObsTargetFieldsFromSettings() {
-    const sn = $("calibSceneName");
-    const tn = $("calibTargetSource");
-    if (sn) sn.value = normalizeText(SETTINGS.obsZoomSceneName);
-    if (tn) tn.value = normalizeText(SETTINGS.obsZoomTargetSource);
-  }
-
-  function exportCalibPointsJson() {
-    const pts = pointsMapForObs();
-    if (Object.keys(pts).length === 0) {
-      setStatus("Keine Punkte zum Exportieren.");
-      return;
-    }
-    const body = JSON.stringify(
-      {
-        version: 1,
-        type: "obszoom-calibration-points",
-        exportedAt: new Date().toISOString(),
-        points: pts
-      },
-      null,
-      2
-    );
-    const blob = new Blob([body], { type: "application/json;charset=utf-8" });
-    const a = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    a.href = url;
-    a.download = `obszoom-kalibrierung-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setStatus("Punkte als JSON exportiert.");
   }
 
   async function refreshPreviewPlacement(im, programSceneName, targetSrc) {
@@ -719,8 +808,8 @@
     if (fb) fb.hidden = true;
     previewPlacement = null;
     previewSpace = "unknown";
-    const targetSrc =
-      normalizeText($("calibTargetSource")?.value) || normalizeText(SETTINGS.obsZoomTargetSource);
+    lastProgramSceneName = "";
+    const targetSrc = normalizeText(SETTINGS.obsZoomTargetSource);
     const useSourcePreview = SETTINGS.obsZoomCalibPreviewFromSource === true;
     setStatus(
       useSourcePreview && targetSrc
@@ -775,15 +864,22 @@
           if (previewFromSource) {
             previewSpace = "source";
             previewPlacement = null;
+            lastProgramSceneName = "";
           } else {
             previewSpace = "pgm";
-            const progScene = normalizeText(res.sceneName);
+            lastProgramSceneName = normalizeText(res.sceneName);
+            const progScene = lastProgramSceneName;
             await refreshPreviewPlacement(im, progScene, targetSrc);
           }
           applyPreviewTransform();
           refreshReticle();
           tryLoadPointsFromSettings();
-          syncCalibCategoryButtonsEnabled();
+          syncCategoryNav();
+          forceStartFieldCalibCategory(CATEGORY_ORDER[categoryRingIndex]);
+          for (let attempt = 0; attempt < 4 && !fieldCalibCategory; attempt++) {
+            shiftCategoryRing(1);
+          }
+          if (!fieldCalibCategory) refreshIdleBanner();
           let msg = previewFromSource
             ? `Vorschau: volles Bild der Quelle \u201e${targetSrc}\u201c (Koordinaten wie OBS-Quelle).`
             : normalizeText(res.sceneName)
@@ -792,6 +888,14 @@
           if (previewSpace === "pgm" && targetSrc && !previewPlacement) {
             msg +=
               " Keine Zuordnung (Quelle nicht direkt in der PGM-Szene oder OBS-Fehler) — ggf. volle Quellen-Vorschau aktivieren.";
+          }
+          if (
+            previewSpace === "pgm" &&
+            lastProgramSceneName &&
+            normalizeText(SETTINGS.obsZoomSceneName) &&
+            lastProgramSceneName !== normalizeText(SETTINGS.obsZoomSceneName)
+          ) {
+            msg += ` Hinweis: PGM-Szene (${lastProgramSceneName}) ≠ eingestellte OBS-Szene (${normalizeText(SETTINGS.obsZoomSceneName)}) — Zoom kann verziehen; gleiche Szene wählen oder Quelle direkt in der PGM-Szene platzieren.`;
           }
           setStatus(msg);
           if (fb) fb.hidden = true;
@@ -809,7 +913,6 @@
   }
 
   function onMarkerPointerDown(ev) {
-    if (fieldCalibCategory) return;
     if (!layoutActive || !img()?.naturalWidth) return;
     const hit = ev.target?.closest?.(".calib-marker-hit");
     if (!hit) return;
@@ -819,6 +922,7 @@
     if (!name || name === "Main") return;
     ev.preventDefault();
     ev.stopPropagation();
+    markerDragMoved = false;
     dragState = { name, pointerId: ev.pointerId };
     layoutSvg()?.classList.add("calib-markerDragging");
     try {
@@ -828,24 +932,29 @@
 
   function onMarkerPointerMove(ev) {
     if (!dragState || ev.pointerId !== dragState.pointerId) return;
+    markerDragMoved = true;
     const im = img();
     if (!im) return;
     const disp = eventToUv(im, ev.clientX, ev.clientY);
     const src = displayUvToSourceUv(disp.u, disp.v);
-    filterUvByName.set(dragState.name, { u: src.u, v: src.v });
+    filterUvByName.set(dragState.name, { u: src.u, v: src.v, du: disp.u, dv: disp.v });
     const mainSrc = displayUvToSourceUv(boardCenterU, boardCenterV);
-    filterUvByName.set("Main", { u: mainSrc.u, v: mainSrc.v });
+    filterUvByName.set("Main", { u: mainSrc.u, v: mainSrc.v, du: boardCenterU, dv: boardCenterV });
     scheduleRenderMarkers();
   }
 
   function onMarkerPointerUp(ev) {
     if (!dragState || ev.pointerId !== dragState.pointerId) return;
+    const moved = markerDragMoved;
+    markerDragMoved = false;
     try {
       layoutSvg()?.releasePointerCapture(ev.pointerId);
     } catch {}
     layoutSvg()?.classList.remove("calib-markerDragging");
     dragState = null;
+    if (moved) skipNextShellClick = true;
     scheduleRenderMarkers();
+    schedulePersistCalib();
   }
 
   async function init() {
@@ -860,27 +969,9 @@
       : 100;
     $("calibObsZoomSlider").value = String(zp);
     syncObsZoomReadout();
-    syncObsTargetFieldsFromSettings();
-    const previewCb = $("calibPreviewFromSource");
-    if (previewCb) previewCb.checked = SETTINGS.obsZoomCalibPreviewFromSource === true;
-    previewCb?.addEventListener("change", () => {
-      void (async () => {
-        try {
-          SETTINGS = await savePartial({
-            obsZoomCalibPreviewFromSource: !!previewCb.checked
-          });
-          setStatus(
-            previewCb.checked
-              ? "Vorschau-Modus: volle Ziel-Quelle — „Aktualisieren“ zum Laden."
-              : "Vorschau-Modus: Programm-Canvas — „Aktualisieren“ zum Laden."
-          );
-        } catch (e) {
-          setStatus(String(e?.message || e));
-        }
-      })();
-    });
+    categoryRingIndex = 0;
     applyPreviewTransform();
-    syncCalibCategoryButtonsEnabled();
+    syncCategoryNav();
 
     layoutSvg()?.addEventListener("pointerdown", onMarkerPointerDown);
     layoutSvg()?.addEventListener("pointermove", onMarkerPointerMove);
@@ -890,120 +981,61 @@
     $("calibObsZoomSlider")?.addEventListener("input", () => {
       syncObsZoomReadout();
       refreshReticle();
+      schedulePersistCalib();
     });
 
-    $("btnCalibExportPoints")?.addEventListener("click", () => exportCalibPointsJson());
-    $("btnCalibImportPoints")?.addEventListener("click", () => $("calibPointsJsonFile")?.click());
-    $("calibPointsJsonFile")?.addEventListener("change", (ev) => {
-      const file = ev.target?.files?.[0];
-      if (ev.target) ev.target.value = "";
-      if (!file) return;
+    $("btnCalibCatPrev")?.addEventListener("click", () => shiftCategoryRing(-1));
+    $("btnCalibCatNext")?.addEventListener("click", () => shiftCategoryRing(1));
+
+    $("btnCalibApplyFilters")?.addEventListener("click", () => {
       void (async () => {
         try {
-          const text = await file.text();
-          const data = JSON.parse(text);
-          if (applyPointsMapFromJsonObject(data)) {
-            setStatus(`Import: Punktlage aus „${file.name}“ übernommen.`);
-          } else {
-            setStatus("Import: keine gültigen Punkte (nx/ny) gefunden.");
+          const im = img();
+          if (previewSpace === "pgm" && im?.naturalWidth) {
+            setStatus("Hole aktuelle Quellen-Position aus OBS …");
+            await refreshPgmPlacementFromObs(im);
+            recomputeAllCalibSourceUvFromDisplay();
           }
-        } catch (e) {
-          setStatus(`Import: ${String(e?.message || e)}`);
-        }
-      })();
-    });
-    $("btnCalibLoadFromSettings")?.addEventListener("click", () => {
-      try {
-        const raw = SETTINGS?.obsZoomCalibPointsJson || "{}";
-        const obj = typeof raw === "string" ? JSON.parse(raw) : raw;
-        if (applyPointsMapFromJsonObject(obj)) {
-          setStatus("Punkte aus Extension-Einstellungen geladen.");
-        } else {
-          setStatus("In den Einstellungen ist keine Punktlage gespeichert.");
-        }
-      } catch (e) {
-        setStatus(String(e?.message || e));
-      }
-    });
-
-    $("btnCalibCreateMoveFilters")?.addEventListener("click", () => {
-      void (async () => {
-        const sceneName = normalizeText($("calibSceneName")?.value);
-        const sourceName = normalizeText($("calibTargetSource")?.value);
-        if (!sceneName || !sourceName) {
-          setStatus("Szene und Ziel-Quelle eintragen.");
-          return;
-        }
-        try {
-          SETTINGS = await savePartial({
-            obsZoomSceneName: sceneName,
-            obsZoomTargetSource: sourceName
-          });
-          const res = await send({
-            type: "OBS_CREATE_MOVE_FILTERS",
-            sceneName,
-            sourceName,
-            mode: "upsert",
-            duration: Math.max(0, Number(SETTINGS.obsZoomDurationMs) || 450),
-            easing: Number.isFinite(Number(SETTINGS.obsZoomMoveEasingType))
-              ? Number(SETTINGS.obsZoomMoveEasingType)
-              : 3,
-            easingFunction: Number.isFinite(Number(SETTINGS.obsZoomMoveEasingFunction))
-              ? Number(SETTINGS.obsZoomMoveEasingFunction)
-              : 2,
-            includeSingles: SETTINGS.obsZoomIncludeSingles !== false,
-            includeDoubles: SETTINGS.obsZoomIncludeDoubles !== false,
-            includeTriples: SETTINGS.obsZoomIncludeTriples !== false
-          });
-          if (!res?.ok) throw new Error(String(res?.error || "obs_create_filters_failed"));
-          const c = Number(res.created) || 0;
-          const u = Number(res.updated) || 0;
-          setStatus(`OBS: ${c} Filter neu, ${u} aktualisiert.`);
-        } catch (e) {
-          setStatus(`OBS Filter: ${String(e?.message || e)}`);
-        }
-      })();
-    });
-
-    $("btnCalibTuneFilters")?.addEventListener("click", () => {
-      void (async () => {
-        try {
+          await flushPersistCalibImmediate();
           const points = pointsRecordForObsApply();
           if (Object.keys(points).length === 0) {
-            setStatus("Keine Punktlage — kalibrieren, importieren oder „Aus Einstellungen laden“.");
+            setStatus("Zuerst Kalibrier-Punkte setzen, dann „Filter anwenden“.");
             return;
           }
-          await applyZoomToObs(points, {
-            persist: false,
-            statusMsg: `OBS: Zoom-Positionen aktualisiert (${Object.keys(points).length} Filter).`
-          });
+          setStatus("Schreibe Move-Filter in OBS …");
+          await applyZoomToObs(points, { persist: true });
         } catch (e) {
-          setStatus(`OBS: ${String(e?.message || e)}`);
+          setStatus(String(e?.message || e));
         }
       })();
     });
 
-    $("btnCalibCatTriple")?.addEventListener("click", () => startFieldCalibCategory("triple"));
-    $("btnCalibCatDouble")?.addEventListener("click", () => startFieldCalibCategory("double"));
-    $("btnCalibCatSingle")?.addEventListener("click", () => startFieldCalibCategory("single"));
-    $("btnCalibCatOther")?.addEventListener("click", () => startFieldCalibCategory("other"));
-
-    shell()?.addEventListener("click", (ev) => {
+    async function handleShellClick(ev) {
       const im = img();
       if (!im?.naturalWidth) return;
       if (ev.target?.closest?.(".calib-toolbar")) return;
+      if (ev.target?.closest?.(".calib-zoomHud")) return;
+      if (ev.target?.closest?.(".calib-applyHud")) return;
       if (dragState) return;
+      if (skipNextShellClick) {
+        skipNextShellClick = false;
+        return;
+      }
       if (!fieldCalibCategory && ev.target?.closest?.(".calib-marker-hit")) return;
+      if (fieldCalibCategory && ev.target?.closest?.(".calib-marker")) return;
 
       if (
         fieldCalibCategory &&
         fieldCalibNames.length > 0 &&
         fieldCalibIndex < fieldCalibNames.length
       ) {
+        if (previewSpace === "pgm") {
+          await refreshPgmPlacementFromObs(im);
+        }
         const nm = fieldCalibNames[fieldCalibIndex];
         const disp = eventToUv(im, ev.clientX, ev.clientY);
         const src = displayUvToSourceUv(disp.u, disp.v);
-        filterUvByName.set(nm, { u: src.u, v: src.v });
+        filterUvByName.set(nm, { u: src.u, v: src.v, du: disp.u, dv: disp.v });
         if (nm === "Main") {
           boardCenterU = disp.u;
           boardCenterV = disp.v;
@@ -1021,10 +1053,15 @@
         }
         refreshReticle();
         scheduleRenderMarkers();
+        schedulePersistCalib();
         return;
       }
 
       if (layoutActive && !fieldCalibCategory) return;
+    }
+
+    shell()?.addEventListener("click", (ev) => {
+      void handleShellClick(ev);
     });
 
     $("calibRetryObs")?.addEventListener("click", () => {
@@ -1043,12 +1080,19 @@
         im.onload = () => {
           previewSpace = "file";
           previewPlacement = null;
+          lastProgramSceneName = "";
           resetLayoutState();
           applyPreviewTransform();
           refreshReticle();
-          syncCalibCategoryButtonsEnabled();
+          syncCategoryNav();
+          forceStartFieldCalibCategory(CATEGORY_ORDER[categoryRingIndex]);
+          for (let attempt = 0; attempt < 4 && !fieldCalibCategory; attempt++) {
+            shiftCategoryRing(1);
+          }
+          if (!fieldCalibCategory) refreshIdleBanner();
           setStatus("Eigenes Bild geladen.");
-          $("calibFallbackWrap").hidden = false;
+          const fbw = $("calibFallbackWrap");
+          if (fbw) fbw.hidden = false;
         };
         im.onerror = () => setStatus("Bild fehlerhaft.");
         im.src = String(reader.result || "");
@@ -1095,43 +1139,6 @@
 
     $("btnCalibShot")?.addEventListener("click", () => {
       void captureFromObs();
-    });
-
-    $("btnCalibSave")?.addEventListener("click", async () => {
-      try {
-        if (!layoutActive) {
-          setStatus("Zuerst Felder setzen (Kategorie-Buttons rechts unter „Felder setzen“).");
-          return;
-        }
-        const strength = getObsZoomPanStrength();
-        const zoomPct = getObsZoomPercent();
-        const partial = {
-          obsZoomStrength: strength,
-          obsZoomCalibZoomPercent: zoomPct,
-          obsZoomCalibPointsJson: JSON.stringify(pointsMapForObs())
-        };
-        const sn = normalizeText($("calibSceneName")?.value);
-        const tn = normalizeText($("calibTargetSource")?.value);
-        if (sn) partial.obsZoomSceneName = sn;
-        if (tn) partial.obsZoomTargetSource = tn;
-        SETTINGS = await savePartial(partial);
-        setStatus("In Extension gespeichert.");
-      } catch (e) {
-        setStatus(`Speichern: ${String(e?.message || e)}`);
-      }
-    });
-
-    $("btnCalibApplyObs")?.addEventListener("click", async () => {
-      try {
-        const points = pointsRecordForObsApply();
-        if (Object.keys(points).length === 0) {
-          setStatus("Keine Punktlage — kalibrieren, importieren oder „Aus Einstellungen laden“.");
-          return;
-        }
-        await applyZoomToObs(points, { persist: true });
-      } catch (e) {
-        setStatus(`OBS: ${String(e?.message || e)}`);
-      }
     });
 
     await captureFromObs();

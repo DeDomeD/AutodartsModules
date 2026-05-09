@@ -28,7 +28,7 @@
       obsZoomPlayerNamesList: "",
       /** Bull-Off-Start → Move-Filter BULL; normales X01-Game-ON → MAIN (ganzes Board). */
       obsZoomBullOffZoom: false,
-      /** Solange Rest > checkoutTriggerThreshold: immer Triple-20-Filter (pro Wurf; ab Schwelle normales Checkout-Zoom). */
+      /** Vor Checkout (Rest vor Wurf > checkoutTriggerThreshold): immer Triple-20; ohne T20/T19 stattdessen MAIN. */
       obsZoomStickyTriple20: false,
       /** Wie obsZoomStickyTriple20, aber Triple-19. Nur einer wirkt — T20 hat Vorrang. */
       obsZoomStickyTriple19: false,

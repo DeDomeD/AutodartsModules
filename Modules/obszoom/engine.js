@@ -526,8 +526,12 @@
   function resolveThrowerRemainingForSticky(payload) {
     if (!payload || typeof payload !== "object") return NaN;
     const meta = payload.__admVisitMeta && typeof payload.__admVisitMeta === "object" ? payload.__admVisitMeta : null;
-    if (meta && Number.isFinite(Number(meta.throwerRemainingScore))) {
-      return Number(meta.throwerRemainingScore);
+    if (meta) {
+      /** Rest vor diesem Wurf — gleiche Checkout-Logik wie Trigger-Karte („ab Schwelle unten“). */
+      const before = Number(meta.remainingBeforeThrow);
+      if (Number.isFinite(before) && before >= 0) return before;
+      const after = Number(meta.throwerRemainingScore);
+      if (Number.isFinite(after) && after >= 0) return after;
     }
     let idx = NaN;
     if (meta && Number.isFinite(Number(meta.throwLogPlayerIndex))) {
@@ -636,26 +640,25 @@
         void applyManagedFilterByKey(stickyTripleKey, { ...payload });
         return;
       }
-      if (settings.obsZoomBullOffZoom === true) {
-        void applyManagedFilterByKey("MAIN", { ...payload, effect: "x01_board_zoom" });
-        return;
-      }
+      /** Ohne Only-T20/T19: vor Checkout immer Ganz-Board (MAIN). */
+      void applyManagedFilterByKey("MAIN", { ...payload, effect: "x01_board_zoom" });
+      return;
     }
 
     if (!obsZoomPlayerFilterAllows(settings, payload)) return;
 
-    if (
-      stickyTripleKey &&
-      key !== "takeout" &&
-      !key.startsWith("gameshot") &&
-      !key.startsWith("matchshot")
-    ) {
+    if (key !== "takeout" && !key.startsWith("gameshot") && !key.startsWith("matchshot")) {
       const meta = payload?.__admVisitMeta;
       if (!meta?.isBullOffPhase && isDartishObsZoomTriggerEffect(payload)) {
         const rem = resolveThrowerRemainingForSticky(payload);
         const th = checkoutThresholdFromSettings(settings);
         if (Number.isFinite(rem) && rem > th) {
-          void applyManagedFilterByKey(stickyTripleKey, { ...payload });
+          if (stickyTripleKey) {
+            void applyManagedFilterByKey(stickyTripleKey, { ...payload });
+          } else {
+            /** Kein Only-T20/T19: vor Checkout-Schwelle immer MAIN statt Segment-Zoom aus Effekt-Regeln. */
+            void applyManagedFilterByKey("MAIN", { ...payload });
+          }
           return;
         }
       }

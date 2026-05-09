@@ -158,13 +158,9 @@
   }
 
   function updateObsZoomScenesCollapseUi(root) {
-    const wrap = root.querySelector("#obsZoomScenesCollapsible");
-    const btn = root.querySelector("[data-obs-zoom-toggle-scenes]");
-    if (!wrap || !btn) return;
-    const collapsed = OBS_SCENES_UI_COLLAPSED;
-    wrap.classList.toggle("open", !collapsed);
-    btn.classList.toggle("active", !collapsed);
-    btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    const det = root.querySelector("#obsZoomScenesDetails");
+    if (!det) return;
+    det.open = !OBS_SCENES_UI_COLLAPSED;
   }
 
   function renderConnectionButton(kind, label, opts = {}) {
@@ -540,6 +536,23 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  function downloadFilterSettingsJson(sceneName, payload) {
+    const safeSceneName = String(sceneName || "scene")
+      .trim()
+      .replace(/[<>:"/\\|?*\x00-\x1F]+/g, "-")
+      .replace(/\s+/g, "_");
+    const fileName = `obs-zoom-filter-settings-${safeSceneName || "scene"}.json`;
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   async function readBackupFile(file) {
     const text = await file.text();
     return JSON.parse(text);
@@ -565,21 +578,14 @@
         </div>
 
         <div class="card obsZoomObsScenesCard">
-          <div class="obsZoomObsScenesFold">
-            <button
-              type="button"
-              class="btnPrimary fullWidthBtn obsZoomScenesRevealBtn${OBS_SCENES_UI_COLLAPSED ? "" : " active"}"
-              data-obs-zoom-toggle-scenes
-              aria-expanded="${OBS_SCENES_UI_COLLAPSED ? "false" : "true"}"
-              aria-label="OBS Szenen ein- oder ausklappen"
-              title="Ein-/Ausklappen"
-            >
-              <span class="obsZoomScenesRevealInner">
-                <span class="obsZoomScenesRevealTitle" data-i18n="obszoom_scenes_fold_title">OBS Szenen</span>
-                <span class="ddArrow obsZoomScenesRevealArrow" aria-hidden="true"></span>
+          <details class="bgUploadDropdown formRow obsZoomScenesDetails" id="obsZoomScenesDetails"${OBS_SCENES_UI_COLLAPSED ? "" : " open"}>
+            <summary class="btnPrimary fullWidthBtn bgUploadSummary obsZoomScenesSummary" aria-label="OBS Szenen ein- oder ausklappen" title="Ein-/Ausklappen">
+              <span class="obsZoomScenesSummaryInner">
+                <span class="obsZoomScenesSummaryTitle" data-i18n="obszoom_scenes_fold_title">OBS Szenen</span>
+                <span class="ddArrow obsZoomScenesSummaryArrow" aria-hidden="true"></span>
               </span>
-            </button>
-          <div id="obsZoomScenesCollapsible" class="inlinePopupWrap obsZoomScenesPanel${OBS_SCENES_UI_COLLAPSED ? "" : " open"}">
+            </summary>
+            <div class="bgUploadBody obsZoomScenesBody">
           <div class="formRow obsZoomScenesPickRow">
             <div class="obsZoomSceneSourcePair">
               <div class="obsZoomScenePick">
@@ -657,11 +663,18 @@
             <button class="btn secondary" id="btnDeleteObsMoveFilters" type="button">Delete</button>
           </div>
           <div class="formRow obsZoomCalibFullRow">
-            <button type="button" class="btn secondary btnObsZoomCalibWip" id="btnObsZoomOpenCalibWindow">Zoom-Zuordnung öffnen …</button>
-            <div class="hint obsZoomCalibHint">Öffnet ein separates Fenster für Screenshot, Segmente und OBS-Schreiben.</div>
+            <div class="obsZoomConfigToolRow">
+              <button type="button" class="btn secondary btnObsZoomCalibWip" id="btnObsZoomOpenCalibWindow" data-i18n="obszoom_btn_configurator">Konfigurator …</button>
+              <div class="obsZoomFilterSettingsSplit" data-i18n-aria-label="obszoom_filter_settings_split_aria" role="group">
+                <button type="button" class="btn secondary obsZoomSplitBtnLeft" id="btnObsZoomSaveFilterSettings" data-i18n="obszoom_filter_settings_save">Save</button>
+                <button type="button" class="btn secondary obsZoomSplitBtnRight" id="btnObsZoomLoadFilterSettings" data-i18n="obszoom_filter_settings_load">Load</button>
+              </div>
+            </div>
+            <input id="obsZoomFilterSettingsImportInput" type="file" accept="application/json,.json" style="display:none;" />
+            <div class="hint obsZoomCalibHint" data-i18n="obszoom_calib_hint">Kalibrierung und OBS-Zuordnung im Konfigurator-Fenster.</div>
           </div>
-          </div>
-          </div>
+            </div>
+          </details>
         </div>
 
         <div class="card obsZoomPlayerFilterCard">
@@ -714,7 +727,7 @@
             </div>
           </div>
           <div class="hint obsZoomModesHint" data-i18n="obszoom_modes_hint_short">
-            Bull/off: Cork-Zoom, danach ganzes Board. Only T20/T19: bis zur Checkout-Schwelle (Trigger-Karte); nur eines aktiv, sonst zählt T20.
+            Bull/off: Cork-Zoom, danach ganzes Board. Only T20/T19: vor Checkout Triple-Zoom; ohne beide Main bis zur Schwelle (Trigger-Karte). Nur eines aktiv, sonst zählt T20.
           </div>
         </div>
 
@@ -809,8 +822,64 @@
             chrome.tabs.create({ url });
           }
         } catch (error) {
-          api.setStatus?.(`Kalibrierungs-Fenster: ${String(error?.message || error || "unknown_error")}`);
+          api.setStatus?.(`Konfigurator: ${String(error?.message || error || "unknown_error")}`);
         }
+      });
+      root.querySelector("#btnObsZoomSaveFilterSettings")?.addEventListener("click", async () => {
+        const sceneName = String(root.querySelector("#obsZoomSceneSelect")?.value || "").trim();
+        if (!sceneName) {
+          api.setStatus?.(obsZoomT(api, "obszoom_filter_settings_need_scene") || "Bitte zuerst eine OBS Szene waehlen.");
+          return;
+        }
+        try {
+          const res = await api.send({ type: "OBS_EXPORT_MOVE_FILTER_SETTINGS", sceneName });
+          if (!res?.ok || !res?.payload) throw new Error(String(res?.error || "obs_export_move_filter_settings_failed"));
+          downloadFilterSettingsJson(sceneName, res.payload);
+          const okMsg = obsZoomT(api, "obszoom_filter_settings_saved_status") || "Filter-Einstellungen exportiert.";
+          api.setStatus?.(`${okMsg} (${res.payload.filters?.length || 0} Filter)`);
+        } catch (error) {
+          api.setStatus?.(
+            `${obsZoomT(api, "obszoom_filter_settings_save_failed") || "Export fehlgeschlagen"}: ${String(error?.message || error || "unknown_error")}`
+          );
+        }
+      });
+      root.querySelector("#btnObsZoomLoadFilterSettings")?.addEventListener("click", () => {
+        const input = root.querySelector("#obsZoomFilterSettingsImportInput");
+        if (!input) return;
+        input.value = "";
+        input.click();
+      });
+      root.querySelector("#obsZoomFilterSettingsImportInput")?.addEventListener("change", async (ev) => {
+        const file = ev.target?.files?.[0];
+        if (!file) return;
+        const sceneName = String(root.querySelector("#obsZoomSceneSelect")?.value || "").trim();
+        if (!sceneName) {
+          api.setStatus?.(obsZoomT(api, "obszoom_filter_settings_need_scene") || "Bitte zuerst eine OBS Szene waehlen.");
+          return;
+        }
+        openWarningModal(
+          api,
+          obsZoomT(api, "obszoom_filter_settings_import_title") || "Filter-Einstellungen laden",
+          obsZoomT(api, "obszoom_filter_settings_import_body") ||
+            "Die JSON-Datei wird auf die Move-Filter dieser Szene in OBS angewendet (bestehende Filter, gleiche Namen).",
+          async () => {
+            try {
+              const doc = await readBackupFile(file);
+              /** Immer die aktuell gewählte OBS-Szene — unabhängig von `sceneName` in der Datei. */
+              const toSend = { ...doc, sceneName };
+              const res = await api.send({ type: "OBS_IMPORT_MOVE_FILTER_SETTINGS", doc: toSend });
+              if (!res?.ok) throw new Error(String(res?.error || "obs_import_move_filter_settings_failed"));
+              const errN = Array.isArray(res?.errors) ? res.errors.length : 0;
+              const okMsg = obsZoomT(api, "obszoom_filter_settings_loaded_status") || "Filter-Einstellungen angewendet.";
+              api.setStatus?.(`${okMsg} ${res.applied || 0}${errN ? `, ${errN} Hinweise` : ""}.`);
+            } catch (error) {
+              api.setStatus?.(
+                `${obsZoomT(api, "obszoom_filter_settings_load_failed") || "Import fehlgeschlagen"}: ${String(error?.message || error || "unknown_error")}`
+              );
+            }
+          },
+          obsZoomT(api, "obszoom_filter_settings_import_confirm") || "Anwenden"
+        );
       });
       root.querySelector("#obsZoomBullOffZoom")?.addEventListener("change", (ev) => {
         const on = !!ev.target?.checked;
@@ -856,10 +925,10 @@
           setTimeout(() => api.refreshConnectionStatuses?.(), 150);
         });
       });
-      root.querySelector("[data-obs-zoom-toggle-scenes]")?.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        OBS_SCENES_UI_COLLAPSED = !OBS_SCENES_UI_COLLAPSED;
-        updateObsZoomScenesCollapseUi(root);
+      root.querySelector("#obsZoomScenesDetails")?.addEventListener("toggle", () => {
+        const det = root.querySelector("#obsZoomScenesDetails");
+        if (!det) return;
+        OBS_SCENES_UI_COLLAPSED = !det.open;
       });
       root.querySelector("#btnRefreshObsScenes")?.addEventListener("click", async () => {
         await reloadObsScenes(api, root, false);
@@ -874,8 +943,9 @@
       root.querySelector("#btnUpdateObsMoveFilters")?.addEventListener("click", async () => {
         openWarningModal(
           api,
-          "Achtung",
-          "Diese Aktion ueberschreibt bestehende Move-Filter-Einstellungen in OBS.",
+          obsZoomT(api, "obszoom_update_modal_title") || "Achtung",
+          obsZoomT(api, "obszoom_update_modal_body") ||
+            "Quelle, Dauer und Easing der Move-Filter werden aktualisiert. Transformation (Position/Zoom) je Filter bleibt erhalten.",
           async () => {
             try {
               await runCreateMoveFiltersFlow(api, root, "update");
@@ -883,7 +953,7 @@
               api.setStatus?.(`Move Filter konnten nicht aktualisiert werden: ${String(error?.message || error || "unknown_error")}`);
             }
           },
-          "Ueberschreiben"
+          obsZoomT(api, "obszoom_update_modal_confirm") || "Ueberschreiben"
         );
       });
       root.querySelector("#btnDeleteObsMoveFilters")?.addEventListener("click", async () => {
