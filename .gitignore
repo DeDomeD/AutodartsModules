@@ -33,6 +33,9 @@ pnpm-debug.log*
 Main/docs/
 docs/
 
+# Lokale Build-/Release-Skripte (nur auf deinem Rechner; nicht ins Git)
+tools/
+
 # Build / package artifacts
 dist/
 build/
