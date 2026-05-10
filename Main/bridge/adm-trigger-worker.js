@@ -536,16 +536,31 @@
     printVisitTimelineDart: noop,
     /**
      * Checkout-Vorschlag aus DOM (`#ad-ext-turn`) — vor dem physischen Wurf; danach {@link ADM.obsZoom.onCheckoutGuideLogged} (OBS-Zoom inkl. Spielerfilter), dann Throw per WS.
-     * @param {string} segmentLabel — z. B. T20
-     * @param {{ nextThrow?: number, domActivePlayerIndex?: number|null, checkoutDomPlayerName?: string }} [opts]
+     * @param {string} segmentLabel — z. B. T20 (Autodarts); kann per Custom-Checkout überschrieben werden
+     * @param {{ nextThrow?: number, domActivePlayerIndex?: number|null, checkoutDomPlayerName?: string, remainingScore?: number|null, resolvedCheckoutGuide?: { logLine: string, displaySegment: string, guideRaw: string, usedOverride?: boolean } }} [opts]
      */
     printCheckoutGuideLine(segmentLabel, opts) {
       try {
         if (!workerLogShowCheckout()) return;
-        const guideRaw = String(segmentLabel || "").replace(/\s+/g, " ").trim();
-        if (!guideRaw || /\[object Object\]/i.test(guideRaw)) return;
+        const adSeg = String(segmentLabel || "").replace(/\s+/g, " ").trim();
+        if (!adSeg || /\[object Object\]/i.test(adSeg)) return;
         const nt = Number(opts?.nextThrow);
         if (!Number.isInteger(nt) || nt < 1 || nt > 3) return;
+        let resolved = opts?.resolvedCheckoutGuide;
+        if (!resolved || typeof resolved !== "object") {
+          try {
+            resolved = ADM.obsZoom?.resolveDomCheckoutGuide?.(adSeg, { remainingScore: opts?.remainingScore });
+          } catch (_) {
+            resolved = null;
+          }
+        }
+        if (!resolved || typeof resolved !== "object") {
+          resolved = { logLine: adSeg, displaySegment: adSeg, guideRaw: adSeg, usedOverride: false };
+        }
+        const logLine = String(resolved.logLine || adSeg).replace(/\s+/g, " ").trim();
+        const displayForObs = String(resolved.displaySegment || adSeg).replace(/\s+/g, " ").trim();
+        const guideForPayload = String(resolved.guideRaw || displayForObs).replace(/\s+/g, " ").trim();
+        if (!logLine || !displayForObs) return;
         const domIdxRaw = opts?.domActivePlayerIndex;
         let domSeg = "";
         let domActiveCol = null;
@@ -557,25 +572,28 @@
           }
         }
         const checkoutDomPlayerName = String(opts?.checkoutDomPlayerName || "").trim();
+        const remNum = Number(opts?.remainingScore);
+        const remainingScorePayload = Number.isFinite(remNum) ? Math.trunc(remNum) : undefined;
         /** Keine Checkout-Guide-Zeile, wenn OBS-Zoom nur bestimmte Spieler — sonst wirkte der Log wie „Zoom für alle“. */
         try {
           if (ADM.obsZoom?.checkoutGuidePassesPlayerFilter?.({
-            displaySegment: guideRaw,
-            guideRaw,
+            displaySegment: displayForObs,
+            guideRaw: guideForPayload,
             nextThrow: nt,
             domActivePlayerIndex: domActiveCol,
-            checkoutDomPlayerName: checkoutDomPlayerName || undefined
+            checkoutDomPlayerName: checkoutDomPlayerName || undefined,
+            remainingScore: remainingScorePayload
           }) === false) {
             return;
           }
         } catch (_) {}
-        const fp = domSeg ? `${domSeg}|${nt}|${guideRaw.toLowerCase()}` : `${nt}|${guideRaw.toLowerCase()}`;
+        const fp = domSeg ? `${domSeg}|${nt}|${logLine.toLowerCase()}` : `${nt}|${logLine.toLowerCase()}`;
         const now = Date.now();
         if (fp === lastCheckoutGuideLineFp && now - lastCheckoutGuideLineAt < 400) return;
         lastCheckoutGuideLineFp = fp;
         lastCheckoutGuideLineAt = now;
         const head = ADM.triggerWorkerLog.sanitizeConsoleFormatArg("Checkout Guide ");
-        const safeSeg = ADM.triggerWorkerLog.sanitizeConsoleFormatArg(guideRaw);
+        const safeSeg = ADM.triggerWorkerLog.sanitizeConsoleFormatArg(logLine);
         const throwTail = ADM.triggerWorkerLog.sanitizeConsoleFormatArg(` · Throw ${nt}`);
         workerConsoleLog(
           `%c[ADM]%c %s%c%s%c%s`,
@@ -590,12 +608,13 @@
         /** Kein `printObsZoomLine` hier: würde vor dem OBS-Zoom-Spielernamenfilter erscheinen und OBS trifft ggf. nicht zu. */
         try {
           void ADM.obsZoom?.onCheckoutGuideLogged?.({
-            displaySegment: guideRaw,
-            guideRaw,
+            displaySegment: displayForObs,
+            guideRaw: guideForPayload,
             nextThrow: nt,
             dedupeKey: fp,
             domActivePlayerIndex: domActiveCol,
-            checkoutDomPlayerName: checkoutDomPlayerName
+            checkoutDomPlayerName: checkoutDomPlayerName,
+            remainingScore: remainingScorePayload
           });
         } catch (_) {}
       } catch {
@@ -744,6 +763,29 @@
           name,
           trig,
           presets,
+          { mirrorCategory: "WLED" }
+        );
+      } catch {
+        // ignore
+      }
+    },
+    /**
+     * WLED-Matrix Punktzahl: `[ADM] Matrix 1 = 501` — gleiche gelbe Badge-Optik wie Preset-Zeile.
+     * @param {{ matrixNo: number, score: string }} opts — matrixNo 1-basiert (Spieler-Matrix 1 / 2)
+     */
+    printAdmWledMatrixLine(opts) {
+      try {
+        const o = opts && typeof opts === "object" ? opts : {};
+        const san = ADM.triggerWorkerLog.sanitizeConsoleFormatArg;
+        const n = Math.trunc(Number(o.matrixNo));
+        const label = Number.isFinite(n) && n > 0 ? String(n) : "?";
+        const score = san(String(o.score != null ? o.score : "").trim() || "—");
+        workerConsoleLog(
+          `%c[ADM]%c Matrix %s = %s`,
+          STYLE_ADM_WLED_BADGE,
+          STYLE_ADM_WLED_TEXT,
+          label,
+          score,
           { mirrorCategory: "WLED" }
         );
       } catch {

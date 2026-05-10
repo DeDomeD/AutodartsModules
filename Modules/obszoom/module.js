@@ -21,6 +21,14 @@
   let OBS_SCENES_UI_COLLAPSED = false;
   const OBS_MOVE_PLUGIN_DOWNLOAD_URL = "https://obsproject.com/forum/resources/move.913/";
   const DEFAULT_WEBSITE_BASE = "https://autodarts-modules-production.up.railway.app";
+  /** Voreinstellungen für Custom Checkout (Rest → eigener Weg); Anklicken fügt/ersetzt Zeile. */
+  const OBS_ZOOM_CUSTOM_CHECKOUT_PRESETS = [
+    "40 : S20 D10",
+    "36 : S20 D8",
+    "32 : S16 D8",
+    "170 : T20 T20 Bull",
+    "130 : T20 S20 Bull"
+  ];
 
   function normalizeText(value) {
     return String(value || "").trim();
@@ -72,6 +80,24 @@
 
   function serializeObsZoomDisplayNames(arr) {
     return arr.map((s) => normalizeText(s)).filter(Boolean).join("\n");
+  }
+
+  function upsertCustomCheckoutLine(currentText, newLine) {
+    const add = String(newLine || "").trim();
+    if (!add) return String(currentText || "").trimEnd();
+    const sm = add.match(/^(\d{1,4})\s*:/);
+    if (!sm) {
+      const base = String(currentText || "").trimEnd();
+      return base ? `${base}\n${add}` : add;
+    }
+    const sc = sm[1];
+    const baseLines = String(currentText || "").split(/\r?\n/);
+    const kept = baseLines.filter((raw) => {
+      const ln = String(raw || "").trim();
+      if (!ln) return true;
+      return !new RegExp(`^\\s*${sc}\\s*:`).test(ln);
+    });
+    return [...kept, add].join("\n");
   }
 
   function escapeObsChipHtml(s) {
@@ -144,7 +170,8 @@
       obsZoomIncludeSingles: !!root.querySelector("#obsZoomIncludeSingles")?.checked,
       obsZoomIncludeDoubles: !!root.querySelector("#obsZoomIncludeDoubles")?.checked,
       obsZoomIncludeTriples: !!root.querySelector("#obsZoomIncludeTriples")?.checked,
-      obsZoomLastTestTrigger: normalizeText(root.querySelector("#obsZoomTestTrigger")?.value || OBS_TEST_TRIGGER).toUpperCase() || "T20"
+      obsZoomLastTestTrigger: normalizeText(root.querySelector("#obsZoomTestTrigger")?.value || OBS_TEST_TRIGGER).toUpperCase() || "T20",
+      obsZoomCustomCheckoutLines: String(root.querySelector("#obsZoomCustomCheckoutLines")?.value || "")
     };
     const stored = api.getSettings?.() || {};
     const targetFromUi = normalizeText(OBS_SELECTED_SOURCE);
@@ -662,16 +689,17 @@
             <button class="btn secondary" id="btnUpdateObsMoveFilters" type="button">Update</button>
             <button class="btn secondary" id="btnDeleteObsMoveFilters" type="button">Delete</button>
           </div>
-          <div class="formRow obsZoomCalibFullRow">
-            <div class="obsZoomConfigToolRow">
-              <button type="button" class="btn secondary btnObsZoomCalibWip" id="btnObsZoomOpenCalibWindow" data-i18n="obszoom_btn_configurator">Konfigurator …</button>
-              <div class="obsZoomFilterSettingsSplit" data-i18n-aria-label="obszoom_filter_settings_split_aria" role="group">
-                <button type="button" class="btn secondary obsZoomSplitBtnLeft" id="btnObsZoomSaveFilterSettings" data-i18n="obszoom_filter_settings_save">Save</button>
-                <button type="button" class="btn secondary obsZoomSplitBtnRight" id="btnObsZoomLoadFilterSettings" data-i18n="obszoom_filter_settings_load">Load</button>
-              </div>
+          <div class="formRow" style="margin-top:14px;">
+            <div
+              class="obsZoomFilterSettingsSplit"
+              data-i18n-aria-label="obszoom_filter_settings_split_aria"
+              role="group"
+              style="width:100%;max-width:420px;"
+            >
+              <button type="button" class="btn secondary obsZoomSplitBtnLeft" id="btnObsZoomSaveFilterSettings" data-i18n="obszoom_filter_settings_save">Save</button>
+              <button type="button" class="btn secondary obsZoomSplitBtnRight" id="btnObsZoomLoadFilterSettings" data-i18n="obszoom_filter_settings_load">Load</button>
             </div>
             <input id="obsZoomFilterSettingsImportInput" type="file" accept="application/json,.json" style="display:none;" />
-            <div class="hint obsZoomCalibHint" data-i18n="obszoom_calib_hint">Kalibrierung und OBS-Zuordnung im Konfigurator-Fenster.</div>
           </div>
             </div>
           </details>
@@ -683,6 +711,31 @@
             <label class="label" for="obsZoomCheckoutTriggerThreshold" data-i18n="checkout_threshold_label">Checkout Schwelle</label>
             <input class="input" id="obsZoomCheckoutTriggerThreshold" type="number" min="2" max="170" step="1" value="170" />
             <div class="hint" data-i18n="checkout_threshold_hint">Ab diesem Restwert und darunter wird der Checkout-Trigger aktiv.</div>
+          </div>
+          <div class="formRow" style="margin-top:12px;">
+            <label class="label" for="obsZoomCustomCheckoutLines" data-i18n="obszoom_custom_checkout_label">Custom Checkout</label>
+            <textarea
+              class="input"
+              id="obsZoomCustomCheckoutLines"
+              rows="4"
+              style="width:100%;max-width:420px;font-family:inherit;resize:vertical;"
+              spellcheck="false"
+              placeholder="132: Bull Bull D16"
+            ></textarea>
+            <div class="hint" data-i18n="obszoom_custom_checkout_hint"></div>
+            <div
+              class="miniButtonRow"
+              style="flex-wrap:wrap;margin-top:8px;gap:6px;"
+              role="group"
+              data-i18n-aria-label="obszoom_custom_checkout_presets_aria"
+            >
+              ${OBS_ZOOM_CUSTOM_CHECKOUT_PRESETS.map((line) => {
+                const m = line.match(/^(\d+)/);
+                const lab = m ? m[1] : "?";
+                const esc = escapeObsChipHtml(line);
+                return `<button type="button" class="btnMini" title="${esc}" data-obs-zoom-custom-checkout-preset="${esc}">${lab}</button>`;
+              }).join("")}
+            </div>
           </div>
           <div class="formRow" style="margin-top:10px;">
             <button type="button" class="btnPrimary obsZoomPlayerNameBtn" id="btnObsZoomAddPlayerName" data-i18n="obszoom_player_name_btn">Player Name</button>
@@ -767,6 +820,15 @@
     bind(api) {
       const root = api.root;
       api.bindAuto(root, "obsZoomCheckoutTriggerThreshold", "checkoutTriggerThreshold", "number");
+      let obsZoomCustomCheckoutSaveTimer = null;
+      root.querySelector("#obsZoomCustomCheckoutLines")?.addEventListener("input", () => {
+        if (obsZoomCustomCheckoutSaveTimer) clearTimeout(obsZoomCustomCheckoutSaveTimer);
+        obsZoomCustomCheckoutSaveTimer = setTimeout(() => {
+          obsZoomCustomCheckoutSaveTimer = null;
+          const ta = root.querySelector("#obsZoomCustomCheckoutLines");
+          void api.savePartial?.({ obsZoomCustomCheckoutLines: String(ta?.value || "") });
+        }, 400);
+      });
       root.querySelector("#btnObsZoomAddPlayerName")?.addEventListener("click", () => {
         openPlayerNameModal(api);
       });
@@ -812,18 +874,6 @@
         const v = Math.max(0, Number(root.querySelector("#obsZoomMoveDuration")?.value) || 0);
         OBS_MOVE_DURATION = v;
         void api.savePartial?.({ obsZoomDurationMs: v });
-      });
-      root.querySelector("#btnObsZoomOpenCalibWindow")?.addEventListener("click", () => {
-        try {
-          const url = chrome.runtime.getURL("Modules/obszoom/obszoom-calib.html");
-          if (chrome?.windows?.create) {
-            chrome.windows.create({ url, type: "popup", width: 1060, height: 840, focused: true });
-          } else {
-            chrome.tabs.create({ url });
-          }
-        } catch (error) {
-          api.setStatus?.(`Konfigurator: ${String(error?.message || error || "unknown_error")}`);
-        }
       });
       root.querySelector("#btnObsZoomSaveFilterSettings")?.addEventListener("click", async () => {
         const sceneName = String(root.querySelector("#obsZoomSceneSelect")?.value || "").trim();
@@ -1108,6 +1158,17 @@
           return;
         }
 
+        const customCheckoutPreset = ev.target?.closest?.("[data-obs-zoom-custom-checkout-preset]");
+        if (customCheckoutPreset) {
+          const line = String(customCheckoutPreset.getAttribute("data-obs-zoom-custom-checkout-preset") || "").trim();
+          if (!line) return;
+          const ta = root.querySelector("#obsZoomCustomCheckoutLines");
+          if (!ta) return;
+          ta.value = upsertCustomCheckoutLine(ta.value, line);
+          void api.savePartial?.({ obsZoomCustomCheckoutLines: ta.value });
+          return;
+        }
+
         const testPresetBtn = ev.target?.closest?.("[data-obs-zoom-test-preset]");
         if (testPresetBtn) {
           const preset = String(testPresetBtn.getAttribute("data-obs-zoom-test-preset") || "").trim();
@@ -1208,6 +1269,8 @@
       const playerNameModalMount = root.querySelector("#obsZoomPlayerNameModalMount");
       if (playerNameModalMount) playerNameModalMount.innerHTML = renderPlayerNameModal(api);
       api.setValue(root, "obsZoomCheckoutTriggerThreshold", Number.isFinite(s.checkoutTriggerThreshold) ? s.checkoutTriggerThreshold : 170);
+      const customCheckoutTa = root.querySelector("#obsZoomCustomCheckoutLines");
+      if (customCheckoutTa) customCheckoutTa.value = String(s.obsZoomCustomCheckoutLines || "");
       refreshObsZoomPlayerFilterUi(api, root, String(s.obsZoomPlayerNamesList || ""));
       const bullOffZoomEl = root.querySelector("#obsZoomBullOffZoom");
       if (bullOffZoomEl) bullOffZoomEl.checked = s.obsZoomBullOffZoom === true;

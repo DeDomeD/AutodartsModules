@@ -441,6 +441,39 @@ body{
   flex-direction:column;
   gap:10px;
 }
+.admSidePanelWarning{
+  border:1px solid var(--stroke);
+  border-radius:12px;
+  padding:12px 14px;
+  background:rgba(6,10,18,.58);
+  box-shadow:0 6px 22px rgba(0,0,0,.22);
+}
+.admSidePanelWarningTitle{
+  font-weight:800;
+  font-size:14px;
+  margin:0 0 6px;
+  color:var(--text);
+}
+.admSidePanelWarningBody{
+  font-size:12.5px;
+  line-height:1.45;
+  opacity:.9;
+  margin:0 0 10px;
+  color:var(--muted);
+}
+.admSidePanelWarningFooter{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.admSidePanelWarningFooter--split{
+  justify-content:stretch;
+}
+.admSidePanelWarningFooter--split .btn,
+.admSidePanelWarningFooter--split .btnPrimary{
+  flex:1 1 120px;
+  min-width:0;
+}
 .bgUploadDropdown > summary.bgUploadSummary{
   text-align:center;
   cursor:pointer;
@@ -465,32 +498,13 @@ body{
   padding:10px;
 }
 
-/* OBS-Zoom: Kalibrier-/Zuordnungsfenster — leicht rötlich (offenes Detail) */
-.btn.secondary.btnObsZoomCalibWip{
-  flex:0 1 auto;
-  border-color:rgba(210, 95, 95, 0.45);
-  background:linear-gradient(180deg, rgba(200, 65, 70, 0.20), rgba(110, 35, 42, 0.12));
-  color:rgba(255, 210, 206, 0.96);
-}
-.btn.secondary.btnObsZoomCalibWip:hover{
-  filter:brightness(1.07);
-  border-color:rgba(235, 120, 115, 0.55);
-}
-.btn.secondary.btnObsZoomCalibWip:active{
-  transform:translateY(1px);
+.wledPresetPickDropdown > summary.bgUploadSummary{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
 }
 
-.obsZoomConfigToolRow{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  align-items:stretch;
-  width:100%;
-}
-.obsZoomConfigToolRow > .btn.secondary.btnObsZoomCalibWip{
-  flex:1 1 200px;
-  min-width:0;
-}
 .obsZoomFilterSettingsSplit{
   display:flex;
   flex:1 1 160px;
@@ -1270,15 +1284,28 @@ body{
 .communityGalleryPreviewShell.communityPreview--localHero{
   cursor:pointer;
 }
-.communityGalleryPreviewShell .communityPreviewImage{
+/* Hintergrundbild unter dem Spielfeld-Mock; Mock liegt darüber (s. .communityPreviewGameMock). */
+.communityGalleryPreviewShell .communityPreviewPhotoHost{
+  position:absolute;
+  inset:0;
+  z-index:0;
+  overflow:hidden;
+  border-radius:inherit;
+  pointer-events:none;
+}
+.communityGalleryPreviewShell .communityPreviewPhotoHost .communityPreviewImage{
   position:absolute;
   inset:0;
   width:100%;
   height:100%;
   object-fit:cover;
   object-position:center center;
-  z-index:2;
+  z-index:0;
   background-color:#0b101c;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock{
+  display:flex;
+  flex-direction:column;
 }
 .communityGalleryCardHead{
   width:100%;
@@ -1412,6 +1439,30 @@ body{
   border-color:rgba(255,90,90,.45);
   color:#ffb4b4;
 }
+.communityGalleryDownloadFab{
+  position:absolute;
+  bottom:10px;
+  left:10px;
+  z-index:6;
+  width:36px;
+  height:36px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(8,12,20,.66);
+  color:#e8f0ff;
+  font-size:15px;
+  line-height:1;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  pointer-events:auto;
+}
+.communityGalleryDownloadFab:hover{
+  border-color:rgba(25,199,255,.35);
+  background:rgba(12,20,32,.78);
+}
 .communityGalleryPreviewShell .communityStarBtn{
   position:absolute;
   top:10px;
@@ -1487,10 +1538,183 @@ body{
   content:"";
   position:absolute;
   inset:0;
+  z-index:1;
   background:
     linear-gradient(180deg, rgba(5,10,18,.28), transparent 38%),
     linear-gradient(0deg, rgba(5,10,18,.42), transparent 42%);
   pointer-events:none;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityPreviewGameMock{
+  position:relative;
+  z-index:2;
+  display:flex;
+  flex-direction:column;
+  flex:1 1 auto;
+  min-height:0;
+  height:100%;
+  padding:10px 12px 12px;
+  pointer-events:none;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityPreviewGameMock--noTopLabel .communityPreviewFallback{
+  margin-top:8px;
+}
+/* Echter Screenshot aus play.autodarts.io: Wireframe-Mock ausblenden, Foto bleibt sichtbar. */
+.communityGalleryPreviewShell.communityPreview--galleryMock.communityPreview--hasScreenshotBoard .communityPreviewGameMock,
+.communityGalleryPreviewShell.communityPreview--galleryMock.communityPreview--hasScreenshotBoard .communityPreviewLabelRow{
+  display:none !important;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock.communityPreview--hasScreenshotBoard .communityPreview::after{
+  opacity:0.22;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityPreviewLabelRow{
+  z-index:2;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityPreviewFallback{
+  z-index:2;
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityPreviewCounters{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:10px;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityPreviewBoardRingWrap{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 auto;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityPreviewDartboard{
+  position:relative;
+  flex:0 0 auto;
+  width:96px;
+  height:96px;
+  border-radius:50%;
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,.45),
+    0 0 0 5px var(--preview-glow),
+    0 6px 18px rgba(0,0,0,.35);
+  filter:saturate(1.05);
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityPreviewDartboardSvg{
+  display:block;
+  width:100%;
+  height:100%;
+  border-radius:50%;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityPreviewTop,
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityPreviewFooter{
+  gap:6px;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityDot{
+  width:7px;
+  height:7px;
+  box-shadow:0 0 10px var(--preview-glow);
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityPill{
+  width:44px;
+  height:7px;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityChip{
+  width:26px;
+  height:7px;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityChip.wide{
+  width:48px;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityPreviewPlayer{
+  padding:7px 8px;
+  border-radius:12px;
+  min-height:48px;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityAvatar{
+  width:17px;
+  height:17px;
+  margin-bottom:5px;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityLine{
+  height:6px;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock .communityScore{
+  width:52%;
+  height:15px;
+  margin-top:7px;
+}
+/* Galerie-Wireframe: Vertikal-Theme → zwei Scores nebeneinander, Scheibe darunter (Match eher gestapelt). */
+.communityGalleryPreviewShell.communityPreview--galleryMock.communityPreview--scoreTop .communityPreviewScoreTopRow{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin-top:10px;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock.communityPreview--scoreTop .communityPreviewBoardRingWrap{
+  flex:1 1 auto;
+  min-height:72px;
+  margin-top:6px;
+  margin-bottom:2px;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock.communityPreview--scoreTop .communityPreviewDartboard{
+  width:102px;
+  height:102px;
+}
+/* Galerie-Wireframe: Horizontal-Theme → Scores links und rechts von der Scheibe (Match eher breit). */
+.communityGalleryPreviewShell.communityPreview--galleryMock.communityPreview--scoreSide .communityPreviewScoreSideStage{
+  display:flex;
+  flex-direction:row;
+  align-items:stretch;
+  justify-content:center;
+  gap:6px;
+  margin-top:8px;
+  flex:1 1 auto;
+  min-height:0;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock.communityPreview--scoreSide .communityPreviewScoreSideCol{
+  flex:1 1 0;
+  min-width:0;
+  display:flex;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock.communityPreview--scoreSide .communityPreviewScoreSideCol .communityPreviewPlayer{
+  flex:1 1 auto;
+  min-height:56px;
+  width:100%;
+  box-sizing:border-box;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock.communityPreview--scoreSide .communityPreviewScoreSideCol .communityPreviewPlayer.tall{
+  min-height:62px;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock.communityPreview--scoreSide .communityPreviewBoardRingWrap{
+  flex:0 0 auto;
+  align-self:center;
+  padding:0 2px;
+}
+.communityGalleryPreviewShell.communityPreview--galleryMock.communityPreview--scoreSide .communityPreviewDartboard{
+  width:92px;
+  height:92px;
+}
+.communityGalleryPreviewShell.communityPreview--compactHero.communityPreview--galleryMock .communityPreviewGameMock{
+  padding:6px 8px 8px;
+}
+.communityGalleryPreviewShell.communityPreview--compactHero.communityPreview--galleryMock .communityPreviewDartboard{
+  width:78px;
+  height:78px;
+}
+.communityGalleryPreviewShell.communityPreview--compactHero.communityPreview--galleryMock.communityPreview--scoreTop .communityPreviewDartboard{
+  width:84px;
+  height:84px;
+}
+.communityGalleryPreviewShell.communityPreview--compactHero.communityPreview--galleryMock.communityPreview--scoreSide .communityPreviewDartboard{
+  width:72px;
+  height:72px;
+}
+.communityGalleryPreviewShell.communityPreview--compactHero.communityPreview--galleryMock.communityPreview--scoreSide .communityPreviewScoreSideCol .communityPreviewPlayer.tall{
+  min-height:50px;
+}
+.communityGalleryPreviewShell.communityPreview--compactHero.communityPreview--galleryMock .communityPreviewLabelRow{
+  display:none;
 }
 .communityPreviewTop,
 .communityPreviewFooter{

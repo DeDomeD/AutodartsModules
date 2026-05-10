@@ -987,6 +987,28 @@
     return String(value || "").replace(/\s+/g, " ").trim();
   }
 
+  /**
+   * Nur echte Spieler-Spalten: direkte Kinder von `#ad-ext-player-display`, die eine `.ad-ext-player`-Karte enthalten.
+   * Ignoriert KI-Schiedsrichter-Overlays, Toasts und andere eingeschobene Knoten ohne Spielerkarte (stabile Indizes).
+   */
+  function listAdExtPlayerDisplayColumns(root) {
+    if (!root) return [];
+    return Array.from(root.children || []).filter(
+      (n) => n && n.nodeType === 1 && n.querySelector(".ad-ext-player")
+    );
+  }
+
+  /** Call-Referee / KI-Schiedsrichter — kein Abbruch der Turn-Zeile wie bei Undo/Next. */
+  function isCallRefereeButton(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (String(el.tagName || "").toUpperCase() !== "BUTTON") return false;
+    const ar = String(el.getAttribute?.("aria-label") || "").toLowerCase();
+    if (ar.includes("referee") || ar.includes("schiedsrichter")) return true;
+    const title = String(el.getAttribute?.("title") || "").toLowerCase();
+    if (title.includes("referee") || title.includes("schiedsrichter")) return true;
+    return false;
+  }
+
   function parseDartThrowSlotElement(el) {
     if (!el || el.nodeType !== 1) {
       return { empty: true, points: null, segmentLabel: null };
@@ -1212,12 +1234,12 @@
    * Aktiver Spieler laut UI: innere Zeile hat `ad-ext-player ad-ext-player-active` vs. `ad-ext-player-inactive`.
    * (Ältere Builds nutzten u. a. `ad-ext-player-active-active` auf der Spalte — weiter als Fallback.)
    * Top-Level-Kinder von `#ad-ext-player-display` sind oft nur Wrapper-`div`s um jeweils eine `.ad-ext-player`-Box.
-   * @returns {number|null} Spaltenindex (Reihenfolge der direkten Kinder unter `#ad-ext-player-display`)
+   * @returns {number|null} Spaltenindex (Reihenfolge der **Spieler-Spalten** — siehe `listAdExtPlayerDisplayColumns`)
    */
   function getDomActivePlayerColumnIndex() {
     const root = document.getElementById("ad-ext-player-display");
     if (!root) return null;
-    const cols = Array.from(root.children || []).filter((n) => n && n.nodeType === 1);
+    const cols = listAdExtPlayerDisplayColumns(root);
     const isActivePlayerClass = (cnRaw) => {
       const cn = String(cnRaw || "");
       if (/\bad-ext-player-inactive\b/.test(cn)) return false;
@@ -1245,7 +1267,7 @@
   function collectPlayerDisplayStripsFromDom() {
     const root = document.getElementById("ad-ext-player-display");
     if (!root) return [];
-    const cols = Array.from(root.children || []).filter((n) => n && n.nodeType === 1);
+    const cols = listAdExtPlayerDisplayColumns(root);
     const out = [];
     for (let i = 0; i < cols.length && i < 16; i += 1) {
       const col = cols[i];
@@ -1589,6 +1611,25 @@
         if (Number.isFinite(n) && n >= 0 && n <= 999) return Math.trunc(n);
       }
     } catch (_) {}
+
+    /** Chakra-Hash-Klassen wechseln bei KI-Schiedsrichter / Re-Renders — konservative Text-Heuristik. */
+    try {
+      const scoreEl = col.querySelector(".ad-ext-player-score, p.ad-ext-player-score");
+      const blocks = col.querySelectorAll("p.chakra-text, span.chakra-text");
+      for (let bi = 0; bi < blocks.length; bi += 1) {
+        const el = blocks[bi];
+        if (!el || (scoreEl && scoreEl.contains(el))) continue;
+        const raw = normalizeText(el.textContent || "");
+        if (!/^\d{1,2}$/.test(raw)) continue;
+        const n = Number(raw);
+        if (!(n >= 0 && n <= 50)) continue;
+        const row = el.closest("p");
+        const rowText = row ? normalizeText(row.textContent || "") : raw;
+        if (/#\s*\d/.test(rowText) && (/[∅\u2205/]/.test(rowText) || /\d+\s*\/\s*\d/.test(rowText))) continue;
+        if (rowText.length > 6) continue;
+        return Math.trunc(n);
+      }
+    } catch (_) {}
     return null;
   }
 
@@ -1617,11 +1658,23 @@
     for (let i = 0; i < children.length; i += 1) {
       const ch = children[i];
       if (!ch || ch.nodeType !== 1) continue;
-      if (String(ch.tagName || "").toUpperCase() === "BUTTON") break;
+      if (String(ch.tagName || "").toUpperCase() === "BUTTON") {
+        if (isCallRefereeButton(ch)) continue;
+        break;
+      }
       if (ch.querySelector?.(".ad-ext-turn-points")) continue;
       if (ch.classList.contains("score") || ch.classList.contains("ad-ext-turn-throw")) {
         slots.push(parseDartThrowSlotElement(ch));
       }
+    }
+    /** KI-UI kann Wrapper um Throws legen — Fallback, wenn direkte Kinder keine Slots liefern. */
+    if (!slots.length) {
+      try {
+        const throws = Array.from(turnRoot.querySelectorAll(":scope .ad-ext-turn-throw"));
+        for (let ti = 0; ti < throws.length; ti += 1) {
+          slots.push(parseDartThrowSlotElement(throws[ti]));
+        }
+      } catch (_) {}
     }
     const refBtn = turnRoot.querySelector('button[aria-label="Call referee"]');
     return {
@@ -1721,7 +1774,7 @@
     const ai = getDomActivePlayerColumnIndex();
     const root = document.getElementById("ad-ext-player-display");
     if (ai == null || !Number.isInteger(ai) || ai < 0 || !root) return null;
-    const cols = Array.from(root.children || []).filter((n) => n && n.nodeType === 1);
+    const cols = listAdExtPlayerDisplayColumns(root);
     if (ai >= cols.length) return null;
     const col = cols[ai];
     const scoreEl = col.querySelector(".ad-ext-player-score") || col.querySelector("p.ad-ext-player-score");
@@ -1743,7 +1796,10 @@
     for (let i = 0; i < children.length; i += 1) {
       const ch = children[i];
       if (!ch || ch.nodeType !== 1) continue;
-      if (String(ch.tagName || "").toUpperCase() === "BUTTON") break;
+      if (String(ch.tagName || "").toUpperCase() === "BUTTON") {
+        if (isCallRefereeButton(ch)) continue;
+        break;
+      }
       const ptsEl = ch.querySelector?.(".ad-ext-turn-points");
       if (ptsEl) {
         const raw = normalizeText(ptsEl.textContent || "");
@@ -1851,7 +1907,7 @@
     const root = document.getElementById("ad-ext-player-display");
     const players = [];
     if (root) {
-      const cols = Array.from(root.children || []).filter((n) => n && n.nodeType === 1);
+      const cols = listAdExtPlayerDisplayColumns(root);
       for (let i = 0; i < cols.length && i < 16; i += 1) {
         const col = cols[i];
         const scoreEl = col.querySelector(".ad-ext-player-score") || col.querySelector("p.ad-ext-player-score");

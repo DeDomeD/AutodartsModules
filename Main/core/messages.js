@@ -478,8 +478,14 @@
     try {
       const u = new URL(String(url || ""));
       const host = u.hostname.toLowerCase();
-      if (host !== "play.autodarts.io" && !host.endsWith(".play.autodarts.io")) return false;
-      return /\/statistics(?:\/|$)/i.test(u.pathname || "");
+      const okHost =
+        host === "play.autodarts.io" ||
+        host.endsWith(".play.autodarts.io") ||
+        host === "autodarts.io" ||
+        host.endsWith(".autodarts.io");
+      if (!okHost) return false;
+      const path = String(u.pathname || "") + String(u.hash || "");
+      return /\bstatistics\b/i.test(path);
     } catch {
       return false;
     }
@@ -725,6 +731,39 @@
             return;
           }
 
+          if (msg?.type === "ADM_REQUEST_STYLEBOT_THUMB_CAPTURE") {
+            const packUrl = String(msg?.packUrl || "").trim();
+            const layout =
+              String(msg?.layout || "horizontal").toLowerCase() === "vertical" ? "vertical" : "horizontal";
+            const themeId = String(msg?.themeId || "").trim().toLowerCase();
+            if (!packUrl || !themeId) {
+              sendResponse({ ok: false, error: "bad_args" });
+              return;
+            }
+            const tabId = await findAutodartsMatchTabId();
+            if (!Number.isInteger(tabId)) {
+              sendResponse({ ok: false, error: "no_match_tab" });
+              return;
+            }
+            const reply = await new Promise((resolve) => {
+              try {
+                chrome.tabs.sendMessage(
+                  tabId,
+                  { type: "ADM_DO_STYLEBOT_THUMB_CAPTURE", packUrl, layout, themeId },
+                  (res) => {
+                    const err = chrome.runtime.lastError;
+                    if (err) resolve({ ok: false, error: `tab:${String(err.message || err)}` });
+                    else resolve(res && typeof res === "object" ? res : { ok: false, error: "bad_tab_reply" });
+                  }
+                );
+              } catch (e) {
+                resolve({ ok: false, error: String(e?.message || e) });
+              }
+            });
+            sendResponse(reply);
+            return;
+          }
+
           if (msg?.type === "SET_SETTINGS") {
             const updated = await ADM.setSettings(msg.settings || {});
             ADM.refreshRuntimeConnections?.();
@@ -842,26 +881,6 @@
             return;
           }
 
-          if (msg?.type === "OBS_GET_ZOOM_CALIB_PLACEMENT") {
-            try {
-              const placement = await ADM.getObsZoomCalibPlacement?.(msg?.payload || {});
-              sendResponse({ ok: true, ...placement });
-            } catch (e) {
-              sendResponse({ ok: false, error: String(e?.message || e || "obs_get_zoom_calib_placement_failed") });
-            }
-            return;
-          }
-
-          if (msg?.type === "OBS_APPLY_ZOOM_CALIBRATION") {
-            try {
-              const result = await ADM.applyObsZoomCalibration?.(msg?.payload || {});
-              sendResponse({ ok: true, ...result });
-            } catch (e) {
-              sendResponse({ ok: false, error: String(e?.message || e || "obs_apply_zoom_calibration_failed") });
-            }
-            return;
-          }
-
           if (msg?.type === "OBS_DELETE_MOVE_FILTERS") {
             const result = await ADM.deleteObsMoveFilters?.(msg?.sceneName, {
               includeSingles: msg?.includeSingles,
@@ -975,46 +994,92 @@
                       .replace(/\s+/g, " ")
                       .trim();
                   }
-                  function readKpiPairs(scope) {
+                  /** KPI-Zeilen: Label + mindestens ein direktes Kind-<span> (Wert = letztes Span, wie Chakra/Recharts-Karten). */
+                  function readKpiPairsFromScope(scope) {
                     const out = {};
                     if (!scope || !scope.querySelectorAll) return out;
-                    const ps = scope.querySelectorAll("p.chakra-text, p[class*='chakra-text'], div.chakra-text, div[class*='chakra-text']");
+                    const ps = scope.querySelectorAll("p");
                     for (let i = 0; i < ps.length; i += 1) {
                       const p = ps[i];
-                      const tag = String(p.tagName || "").toLowerCase();
-                      if (tag !== "p" && tag !== "div") continue;
-                      const spans = p.querySelectorAll(":scope > span.chakra-text, :scope > span[class*='chakra-text']");
-                      if (spans.length !== 1) continue;
+                      if (p.closest && (p.closest('[role="menu"]') || p.closest(".chakra-menu__menu-list"))) continue;
+                      const spanKids = Array.from(p.children || []).filter(function (c) {
+                        return c && String(c.tagName || "").toLowerCase() === "span";
+                      });
+                      if (!spanKids.length) continue;
+                      const valSpan = spanKids[spanKids.length - 1];
+                      const val = norm(valSpan.textContent || "");
+                      if (!val) continue;
                       let label = "";
                       const nodes = p.childNodes;
                       for (let j = 0; j < nodes.length; j += 1) {
                         const ch = nodes[j];
+                        if (ch === valSpan) break;
                         if (ch.nodeType === 3) label += ch.textContent || "";
-                        else if (ch.nodeType === 1 && String(ch.tagName || "").toLowerCase() === "span") break;
+                        else if (ch.nodeType === 1) {
+                          const tg = String(ch.tagName || "").toLowerCase();
+                          if (tg === "span") label += norm(ch.textContent || "") + " ";
+                          else if (tg !== "script" && tg !== "style") label += norm(ch.textContent || "") + " ";
+                        }
                       }
                       label = norm(label);
-                      const val = norm(spans[0].textContent || "");
-                      if (!label || !val) continue;
-                      if (label.length > 160 || val.length > 160) continue;
+                      if (!label) continue;
+                      if (label.length > 180 || val.length > 180) continue;
+                      if (label.length < 2) continue;
                       out[label] = val;
                     }
                     return out;
                   }
+                  function mergeKpiMaps(target, add) {
+                    const a = add && typeof add === "object" ? add : {};
+                    const ks = Object.keys(a);
+                    for (let i = 0; i < ks.length; i += 1) {
+                      target[ks[i]] = a[ks[i]];
+                    }
+                    return target;
+                  }
                   try {
                     const root = document.getElementById("root");
                     if (!root) {
-                      return { ok: false, error: "no_root", metrics: {}, capturedAt: Date.now(), url: String(location.href || "") };
+                      return {
+                        ok: false,
+                        error: "no_root",
+                        metrics: {},
+                        capturedAt: Date.now(),
+                        url: String(location.href || ""),
+                        scrapeDebug: { reason: "no_root" }
+                      };
                     }
-                    const panel =
-                      root.querySelector('[role="tabpanel"][aria-labelledby]:not([hidden])') ||
-                      root.querySelector("main") ||
-                      root;
-                    const metrics = readKpiPairs(panel);
+                    const metrics = {};
+                    const panels = root.querySelectorAll('[role="tabpanel"]:not([hidden])');
+                    let usedPanels = 0;
+                    if (panels && panels.length) {
+                      for (let pi = 0; pi < panels.length; pi += 1) {
+                        const part = readKpiPairsFromScope(panels[pi]);
+                        if (Object.keys(part).length) usedPanels += 1;
+                        mergeKpiMaps(metrics, part);
+                      }
+                    }
+                    if (Object.keys(metrics).length < 4) {
+                      const cards = root.querySelectorAll("[class*='chakra-card']");
+                      const maxC = Math.min(cards.length, 16);
+                      for (let ci = 0; ci < maxC; ci += 1) {
+                        mergeKpiMaps(metrics, readKpiPairsFromScope(cards[ci]));
+                      }
+                    }
+                    if (Object.keys(metrics).length < 4) {
+                      mergeKpiMaps(metrics, readKpiPairsFromScope(root));
+                    }
+                    const scrapeDebug = {
+                      panelCount: panels ? panels.length : 0,
+                      usedPanels: usedPanels,
+                      metricKeys: Object.keys(metrics).length
+                    };
                     return {
                       ok: true,
                       capturedAt: Date.now(),
                       url: String(location.href || ""),
-                      metrics
+                      metrics,
+                      scrapeDebug
                     };
                   } catch (e) {
                     return {
@@ -1022,7 +1087,8 @@
                       error: String(e?.message || e),
                       metrics: {},
                       capturedAt: Date.now(),
-                      url: String(location.href || "")
+                      url: String(location.href || ""),
+                      scrapeDebug: { error: String(e?.message || e) }
                     };
                   }
                 }
@@ -1035,6 +1101,18 @@
               if (r.ok === false) {
                 sendResponse({ ok: false, error: String(r.error || "scrape_failed"), payload: r });
                 return;
+              }
+              try {
+                const n = r.metrics && typeof r.metrics === "object" ? Object.keys(r.metrics).length : 0;
+                if (!n) {
+                  logInfo("stats", "statistics scrape returned no KPI rows", {
+                    tabId,
+                    url: r.url,
+                    scrapeDebug: r.scrapeDebug || null
+                  });
+                }
+              } catch {
+                // ignore
               }
               sendResponse({ ok: true, payload: r });
             } catch (e) {

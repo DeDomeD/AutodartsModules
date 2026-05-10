@@ -18,6 +18,17 @@
 
   const WLED_PAD_SEGMENT_SELECTS = new Set([WLED_PAD_LEG, WLED_PAD_THROW]);
 
+  /** Muss mit `engine.js` (wledMatrixClampWh / Matrix-Limits) uebereinstimmen. */
+  const WLED_MATRIX_DIM_MAX = 128;
+  const WLED_MATRIX_LED_MAX = 2048;
+  function clampWledMatrixDimsFromForm(w0, h0) {
+    let w = Math.max(1, Math.min(WLED_MATRIX_DIM_MAX, Math.trunc(Number(w0)) || 16));
+    let h = Math.max(1, Math.min(WLED_MATRIX_DIM_MAX, Math.trunc(Number(h0)) || 16));
+    while (w * h > WLED_MATRIX_LED_MAX && h > 1) h -= 1;
+    while (w * h > WLED_MATRIX_LED_MAX && w > 1) w -= 1;
+    return { w, h };
+  }
+
   const WLED_TRIGGER_GROUPS = [
     {
       key: "wledPad",
@@ -893,17 +904,16 @@
             </button>
           `).join("") : `<div class="hint" style="margin-top:0;">${getLang(settings) === "en" ? "No presets selected yet." : "Noch keine Presets ausgewaehlt."}</div>`}
         </div>
-        <button
-          type="button"
-          class="input presetDropdownBtn"
-          id="wledPresetDropdownBtn"
-          aria-expanded="${wledUiState.presetDropdownOpen ? "true" : "false"}"
+        <details
+          class="bgUploadDropdown wledPresetPickDropdown"
+          id="wledPresetDropdownDetails"
+          ${wledUiState.presetDropdownOpen ? "open" : ""}
         >
-          <span class="presetDropdownValue">${formatPresetSelectionLabel(settings, selectedTargets)}</span>
-          <span class="presetDropdownArrow">${wledUiState.presetDropdownOpen ? "^" : "v"}</span>
-        </button>
-        <div class="presetDropdownMenu${wledUiState.presetDropdownOpen ? " open" : ""}">
-          <div class="list" style="margin-top:0;">
+          <summary class="btnPrimary fullWidthBtn bgUploadSummary">
+            <span class="presetDropdownValue">${formatPresetSelectionLabel(settings, selectedTargets)}</span>
+          </summary>
+          <div class="bgUploadBody">
+            <div class="list" style="margin-top:0;">
             ${allLoaded.map((item) => {
               const key = `${item.controllerId}::${item.presetId}`;
               return `
@@ -921,8 +931,9 @@
                 </button>
               `;
             }).join("")}
+            </div>
           </div>
-        </div>
+        </details>
       </div>
     `;
   }
@@ -1064,6 +1075,267 @@
     return opts.join("");
   }
 
+  function normalizeWledMatrixDisplayRow(raw, ctrls) {
+    const cid = String(raw?.controllerId || "").trim() || String(ctrls[0]?.id || "").trim();
+    const wh = clampWledMatrixDimsFromForm(raw?.w, raw?.h);
+    const serpentine = raw?.serpentine === true;
+    const orientation =
+      String(raw?.orientation || "horizontal").toLowerCase() === "vertical" ? "vertical" : "horizontal";
+    const segmentId = Math.max(0, Math.min(31, Math.trunc(Number(raw?.segmentId) || 0)));
+    const id =
+      String(raw?.id || "").trim() ||
+      `m_${Date.now()}_${Math.floor(Math.random() * 99999)}`;
+    return { id, controllerId: cid, segmentId, w: wh.w, h: wh.h, serpentine, orientation };
+  }
+
+  function legacyWledMatrixDisplaysForUi(settings, ctrls) {
+    const wh = clampWledMatrixDimsFromForm(settings?.wledMatrixWledWidth, settings?.wledMatrixWledHeight);
+    const cid = String(settings?.wledMatrixWledControllerId0 || "").trim() || String(ctrls[0]?.id || "").trim();
+    const segId = Math.max(0, Math.min(31, Math.trunc(Number(settings?.wledMatrixWledSegmentId) || 0)));
+    const orientation =
+      String(settings?.wledMatrixWledScanMode || "rows").toLowerCase() === "cols" ? "vertical" : "horizontal";
+    return [
+      normalizeWledMatrixDisplayRow(
+        {
+          id: "legacy",
+          controllerId: cid,
+          segmentId: segId,
+          w: wh.w,
+          h: wh.h,
+          serpentine: settings?.wledMatrixWledSerpentine === true,
+          orientation
+        },
+        ctrls
+      )
+    ];
+  }
+
+  function parseWledMatrixDisplaysForUi(settings) {
+    const ctrls = getControllers(settings || {});
+    let arr = null;
+    try {
+      const raw = String(settings?.wledMatrixWledDisplaysJson || "").trim();
+      if (raw) {
+        const j = JSON.parse(raw);
+        if (Array.isArray(j) && j.length) {
+          arr = j.map((x) => normalizeWledMatrixDisplayRow(x, ctrls));
+        }
+      }
+    } catch {
+      arr = null;
+    }
+    if (!arr || !arr.length) return legacyWledMatrixDisplaysForUi(settings, ctrls);
+    return arr;
+  }
+
+  function collectWledMatrixDisplaysFromDom(root, settings) {
+    const ctrls = getControllers(settings || {});
+    const cards = root.querySelectorAll("#wledMatrixDisplaysMount .wledMatrixDisplayCard");
+    const out = [];
+    cards.forEach((card) => {
+      const id = String(card.dataset.displayId || "").trim() || `m_${Date.now()}_${Math.floor(Math.random() * 99999)}`;
+      const ctrl = card.querySelector(".wledMatrixDisplayCtrl");
+      const seg = card.querySelector(".wledMatrixDisplaySeg");
+      const wIn = card.querySelector(".wledMatrixDisplayW");
+      const hIn = card.querySelector(".wledMatrixDisplayH");
+      const serp = card.querySelector(".wledMatrixDisplaySerpentine");
+      const orient = card.querySelector(".wledMatrixDisplayOrientation");
+      out.push(
+        normalizeWledMatrixDisplayRow(
+          {
+            id,
+            controllerId: ctrl?.value || "",
+            segmentId: Math.max(0, Math.min(31, Math.trunc(Number(seg?.value) || 0))),
+            w: wIn?.value,
+            h: hIn?.value,
+            serpentine: !!serp?.checked,
+            orientation:
+              String(orient?.value || "horizontal").toLowerCase() === "vertical" ? "vertical" : "horizontal"
+          },
+          ctrls
+        )
+      );
+    });
+    return out;
+  }
+
+  function renderWledMatrixDisplayCardHtml(settings, d, idx) {
+    const lang = getLang(settings);
+    const ctrlOpts = renderWledMatrixControllerOptions(settings, d.controllerId);
+    const serp = d.serpentine ? "checked" : "";
+    const horizSel = d.orientation !== "vertical" ? "selected" : "";
+    const vertSel = d.orientation === "vertical" ? "selected" : "";
+    const segOpts = `<option value="${d.segmentId}" selected>${lang === "en" ? "Segment" : "Segment"} ${d.segmentId}</option>`;
+    const rmTitle = lang === "en" ? "Remove this matrix" : "Diese Matrix entfernen";
+    return `
+      <div class="wledMatrixDisplayCard" data-display-id="${escapeWledAttr(d.id)}" style="margin-top:14px;padding:12px;border:1px solid rgba(255,255,255,0.12);border-radius:8px;">
+        ${idx === 0 ? `<div class="hint" style="margin-bottom:10px;" data-i18n="wled_matrix_displays_order_hint"></div>` : ""}
+        <div class="formRow">
+          <label class="label" data-i18n="wled_matrix_display_controller">Controller</label>
+          <select class="input wledMatrixDisplayCtrl">${ctrlOpts}</select>
+        </div>
+        <div class="formRow">
+          <label class="label" data-i18n="wled_matrix_display_segment">Segment</label>
+          <select class="input wledMatrixDisplaySeg">${segOpts}</select>
+        </div>
+        <div class="formRow">
+          <label class="label" data-i18n="wled_matrix_display_size_label">Breite × Höhe</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input class="input wledMatrixDisplayW" type="number" min="1" max="${WLED_MATRIX_DIM_MAX}" step="1" value="${d.w}" style="flex:1;min-width:0;" />
+            <span style="opacity:0.8;">×</span>
+            <input class="input wledMatrixDisplayH" type="number" min="1" max="${WLED_MATRIX_DIM_MAX}" step="1" value="${d.h}" style="flex:1;min-width:0;" />
+          </div>
+        </div>
+        <div class="listToggle" style="margin-top:8px;">
+          <div class="liText">
+            <div class="liTitle" data-i18n="wled_matrix_display_serpentine">Serpentinen-Verkabelung</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" class="wledMatrixDisplaySerpentine" ${serp} />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="formRow" style="margin-top:10px;">
+          <label class="label" data-i18n="wled_matrix_display_orientation">Ausrichtung</label>
+          <select class="input wledMatrixDisplayOrientation">
+            <option value="horizontal" ${horizSel} data-i18n="wled_matrix_orientation_horizontal">Horizontal (Zeilen)</option>
+            <option value="vertical" ${vertSel} data-i18n="wled_matrix_orientation_vertical">Vertikal (Spalten)</option>
+          </select>
+        </div>
+        <div class="inlineActionsRow" style="margin-top:10px;">
+          <button type="button" class="customThemeDelete" data-wled-matrix-remove title="${escapeWledAttr(rmTitle)}">X</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderWledMatrixDisplaysHtml(settings) {
+    const displays = parseWledMatrixDisplaysForUi(settings);
+    return displays.map((d, idx) => renderWledMatrixDisplayCardHtml(settings, d, idx)).join("");
+  }
+
+  /**
+   * Alles, was `renderWledMatrixSection` / Matrix-Karten beeinflusst. Gleicher Key → kein `innerHTML`-Reset:
+   * verhindert Segment-Dropdowns bei jedem `sync`/Persist neu zu leeren und ständig neu zu fetchen.
+   */
+  function wledMatrixSectionRenderKey(settings) {
+    const s = settings || {};
+    const parts = [
+      String(s.wledMatrixOutput || "pixelit"),
+      s.wledMatrixShowScores === true ? "1" : "0",
+      s.wledMatrixShowPlayerTurn === true ? "1" : "0",
+      String(s.wledMatrixPlayer0Url || ""),
+      String(s.wledMatrixPlayer1Url || ""),
+      String(s.wledMatrixWledDisplaysJson || "").trim(),
+      String(s.wledMatrixWledFgHex || ""),
+      String(s.wledMatrixWledArrowHex || ""),
+      String(Number(s.wledMatrixMinIntervalMs) || 400),
+      String(Number(s.wledMatrixArrowMs) || 600),
+      String(s.wledControllersJson || "").trim(),
+      String(s.wledMatrixWledWidth ?? ""),
+      String(s.wledMatrixWledHeight ?? ""),
+      String(s.wledMatrixWledControllerId0 || ""),
+      String(s.wledMatrixWledSegmentId ?? ""),
+      s.wledMatrixWledSerpentine === true ? "1" : "0",
+      String(s.wledMatrixWledScanMode || "")
+    ];
+    return parts.join("\u241e");
+  }
+
+  /** Chrome/Chromium zeigt nach programmatischem `innerHTML`+`value` oft noch die alte geschlossene Select-Zeile bis zu Interaktion — neues DOM erzwingt korrektes Label. */
+  function wledRepaintNativeSelectFace(sel) {
+    if (!sel || !sel.isConnected || !sel.parentNode) return;
+    const v = String(sel.value);
+    const parent = sel.parentNode;
+    let repl;
+    try {
+      repl = sel.cloneNode(true);
+      parent.replaceChild(repl, sel);
+      repl.value = v;
+    } catch {
+      return;
+    }
+    requestAnimationFrame(() => {
+      if (!repl?.isConnected) return;
+      if (String(repl.value) !== v) repl.value = v;
+    });
+  }
+
+  function applyWledMatrixSegmentOptionsHtml(segSel, segs, curSeg) {
+    if (!segSel || !segSel.isConnected) return;
+    const cs = Math.max(0, Math.min(31, Math.trunc(Number(curSeg) || 0)));
+    if (!Array.isArray(segs) || !segs.length) {
+      segSel.innerHTML = `<option value="${cs}">${escapeWledAttr(`Segment ${cs}`)}</option>`;
+      segSel.value = String(cs);
+      wledRepaintNativeSelectFace(segSel);
+      return;
+    }
+    /** WLED-Liste enthält oft nur „relevante“ Segmente; fehlt `cs`, wählt der Browser willkürlich die erste Option (z. B. „Segment 2“). */
+    const rows = segs.map((s) => {
+      const sid = Math.max(0, Math.min(31, Math.trunc(Number(s.id))));
+      const lab = escapeWledAttr(String(s.label || `Segment ${sid}`));
+      return { id: sid, label: lab };
+    });
+    if (!rows.some((r) => r.id === cs)) {
+      rows.push({ id: cs, label: escapeWledAttr(`Segment ${cs}`) });
+    }
+    rows.sort((a, b) => {
+      const cmp = String(a.label).localeCompare(String(b.label), "de", { sensitivity: "base", numeric: true });
+      if (cmp !== 0) return cmp;
+      return a.id - b.id;
+    });
+    segSel.innerHTML = rows.map((r) => `<option value="${r.id}">${r.label}</option>`).join("");
+    segSel.value = String(cs);
+    if (segSel.value !== String(cs) && rows.length) {
+      const ix = rows.findIndex((r) => r.id === cs);
+      if (ix >= 0) segSel.selectedIndex = ix;
+    }
+    wledRepaintNativeSelectFace(segSel);
+  }
+
+  /**
+   * Segment-Dropdowns aus den Controllern füllen (WLED_TEST_JSON_STATE).
+   * Nur nach echtem Neuaufbau von `#wledMatrixSectionMount` aufrufen — nicht bei jedem UI-Tick.
+   * Pro Controller-Endpoint nur einmal fetchen; Ergebnis auf alle Karten mit diesem Endpoint.
+   */
+  async function refreshAllWledMatrixDisplaySegmentSelects(root, api, settings) {
+    if (!api?.send || !root) return;
+    const cards = root.querySelectorAll("#wledMatrixDisplaysMount .wledMatrixDisplayCard");
+    const noEp = [];
+    const byEp = new Map();
+    cards.forEach((card) => {
+      const segSel = card.querySelector(".wledMatrixDisplaySeg");
+      const ctrlSel = card.querySelector(".wledMatrixDisplayCtrl");
+      if (!segSel || !ctrlSel) return;
+      const cid = String(ctrlSel.value || "").trim();
+      const ep = getEndpointForControllerId(settings, cid);
+      const curSeg = Math.max(0, Math.min(31, Math.trunc(Number(segSel.value) || 0)));
+      if (!ep) {
+        noEp.push({ segSel, curSeg });
+        return;
+      }
+      if (!byEp.has(ep)) byEp.set(ep, []);
+      byEp.get(ep).push({ segSel, curSeg });
+    });
+    noEp.forEach(({ segSel, curSeg }) => {
+      if (!segSel?.isConnected) return;
+      applyWledMatrixSegmentOptionsHtml(segSel, null, curSeg);
+    });
+    for (const [ep, targets] of byEp.entries()) {
+      let segs = null;
+      try {
+        const res = await api.send({ type: "WLED_TEST_JSON_STATE", endpoint: ep });
+        segs = Array.isArray(res?.segments) && res.segments.length > 0 ? res.segments : null;
+      } catch {
+        segs = null;
+      }
+      targets.forEach(({ segSel, curSeg }) => {
+        if (!segSel?.isConnected) return;
+        applyWledMatrixSegmentOptionsHtml(segSel, segs, curSeg);
+      });
+    }
+  }
+
   function renderWledMatrixSection(settings) {
     const s = settings || {};
     const modeWled = String(s.wledMatrixOutput || "pixelit").toLowerCase() === "wled_leds";
@@ -1075,10 +1347,6 @@
     const arIv = Number(s.wledMatrixArrowMs);
     const minVal = Number.isFinite(minIv) ? Math.trunc(minIv) : 400;
     const arVal = Number.isFinite(arIv) ? Math.trunc(arIv) : 600;
-    const segId = Math.max(0, Math.min(31, Math.trunc(Number(s.wledMatrixWledSegmentId) || 0)));
-    const mw = Math.max(1, Math.min(32, Math.trunc(Number(s.wledMatrixWledWidth) || 16)));
-    const mh = Math.max(1, Math.min(32, Math.trunc(Number(s.wledMatrixWledHeight) || 16)));
-    const serp = s.wledMatrixWledSerpentine === true ? "checked" : "";
     const fg = escapeWledAttr(String(s.wledMatrixWledFgHex || "#FFFFFF"));
     const ah = escapeWledAttr(String(s.wledMatrixWledArrowHex || "#00E5FF"));
     const optPix = !modeWled ? "selected" : "";
@@ -1125,37 +1393,10 @@
         </div>
       </div>
       <div id="wledMatrixWledFields"${wledHidden}>
-        <div class="formRow" style="margin-top:12px;">
-          <label class="label" for="wledMatrixWledControllerId0" data-i18n="wled_matrix_wled_ctrl_p1">WLED Controller Spieler 1</label>
-          <select class="input" id="wledMatrixWledControllerId0">${renderWledMatrixControllerOptions(s, s.wledMatrixWledControllerId0)}</select>
-          <div class="hint" data-i18n="wled_matrix_wled_ctrl_hint"></div>
-        </div>
-        <div class="formRow">
-          <label class="label" for="wledMatrixWledControllerId1" data-i18n="wled_matrix_wled_ctrl_p2">WLED Controller Spieler 2</label>
-          <select class="input" id="wledMatrixWledControllerId1">${renderWledMatrixControllerOptions(s, s.wledMatrixWledControllerId1)}</select>
-        </div>
-        <div class="formRow">
-          <label class="label" for="wledMatrixWledSegmentId" data-i18n="wled_matrix_wled_segment_label">Segment-ID (WLED)</label>
-          <input class="input" id="wledMatrixWledSegmentId" type="number" min="0" max="31" step="1" value="${segId}" />
-        </div>
-        <div class="formRow">
-          <label class="label" data-i18n="wled_matrix_wled_size_label">Matrix Breite x Hoehe</label>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <input class="input" id="wledMatrixWledWidth" type="number" min="1" max="32" step="1" value="${mw}" style="flex:1;min-width:0;" />
-            <span style="opacity:0.8;">×</span>
-            <input class="input" id="wledMatrixWledHeight" type="number" min="1" max="32" step="1" value="${mh}" style="flex:1;min-width:0;" />
-          </div>
-        </div>
-        <div class="listToggle" style="margin-top:8px;">
-          <div class="liText">
-            <div class="liTitle" data-i18n="wled_matrix_wled_serpentine_label">Serpentinen-Verkabelung</div>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="wledMatrixWledSerpentine" ${serp} />
-            <span class="slider"></span>
-          </label>
-        </div>
-        <div class="formRow">
+        <div class="hint" style="margin-top:12px;" data-i18n="wled_matrix_displays_intro"></div>
+        <div id="wledMatrixDisplaysMount">${renderWledMatrixDisplaysHtml(s)}</div>
+        <button type="button" class="btnPrimary" style="margin-top:12px;" id="wledMatrixAddDisplayBtn" data-i18n="wled_matrix_add_display_btn">Matrix hinzufuegen</button>
+        <div class="formRow" style="margin-top:14px;">
           <label class="label" for="wledMatrixWledFgHex" data-i18n="wled_matrix_wled_fg_label">Zahlen-Farbe (Hex)</label>
           <input class="input" id="wledMatrixWledFgHex" type="text" value="${fg}" autocomplete="off" />
         </div>
@@ -1212,9 +1453,15 @@
     });
   }
 
-  function refreshPresetPicker(root, settings) {
+  function refreshPresetPicker(root, settings, opts) {
     const mount = root.querySelector("#wledPresetPickerMount");
     if (!mount) return;
+    const prevDetails = mount.querySelector("#wledPresetDropdownDetails");
+    if (opts && typeof opts.presetDropdownOpen === "boolean") {
+      wledUiState.presetDropdownOpen = opts.presetDropdownOpen;
+    } else if (prevDetails) {
+      wledUiState.presetDropdownOpen = !!prevDetails.open;
+    }
     const selectedTargets = getSelectedPresetTargets(root, settings);
     mount.innerHTML = renderPresetPicker(settings, selectedTargets);
   }
@@ -1610,6 +1857,8 @@
       if (!root.__admWledMatrixUiWired) {
         root.__admWledMatrixUiWired = true;
         const persistWledMatrix = async () => {
+          const settings = api.getSettings?.() || {};
+          const displays = collectWledMatrixDisplaysFromDom(root, settings);
           await api.savePartial({
             wledMatrixOutput: String(root.querySelector("#wledMatrixOutput")?.value || "pixelit").trim() === "wled_leds"
               ? "wled_leds"
@@ -1618,12 +1867,7 @@
             wledMatrixShowPlayerTurn: !!root.querySelector("#wledMatrixShowPlayerTurn")?.checked,
             wledMatrixPlayer0Url: String(root.querySelector("#wledMatrixPlayer0Url")?.value || "").trim(),
             wledMatrixPlayer1Url: String(root.querySelector("#wledMatrixPlayer1Url")?.value || "").trim(),
-            wledMatrixWledControllerId0: String(root.querySelector("#wledMatrixWledControllerId0")?.value || "").trim(),
-            wledMatrixWledControllerId1: String(root.querySelector("#wledMatrixWledControllerId1")?.value || "").trim(),
-            wledMatrixWledSegmentId: Math.max(0, Math.min(31, Math.trunc(Number(root.querySelector("#wledMatrixWledSegmentId")?.value) || 0))),
-            wledMatrixWledWidth: Math.max(1, Math.min(32, Math.trunc(Number(root.querySelector("#wledMatrixWledWidth")?.value) || 16))),
-            wledMatrixWledHeight: Math.max(1, Math.min(32, Math.trunc(Number(root.querySelector("#wledMatrixWledHeight")?.value) || 16))),
-            wledMatrixWledSerpentine: !!root.querySelector("#wledMatrixWledSerpentine")?.checked,
+            wledMatrixWledDisplaysJson: JSON.stringify(displays),
             wledMatrixWledFgHex: String(root.querySelector("#wledMatrixWledFgHex")?.value || "#FFFFFF").trim(),
             wledMatrixWledArrowHex: String(root.querySelector("#wledMatrixWledArrowHex")?.value || "#00E5FF").trim(),
             wledMatrixMinIntervalMs: Math.max(
@@ -1636,9 +1880,21 @@
             )
           });
         };
+        let wledMatrixPersistTimer = null;
+        const schedulePersistWledMatrix = () => {
+          clearTimeout(wledMatrixPersistTimer);
+          wledMatrixPersistTimer = setTimeout(() => {
+            wledMatrixPersistTimer = null;
+            void persistWledMatrix();
+          }, 320);
+        };
         root.addEventListener("change", (ev) => {
           if (!ev.target?.closest?.("#wledMatrixSectionMount")) return;
           void persistWledMatrix();
+        });
+        root.addEventListener("input", (ev) => {
+          if (!ev.target?.closest?.("#wledMatrixSectionMount")) return;
+          schedulePersistWledMatrix();
         });
         root.addEventListener(
           "blur",
@@ -1648,6 +1904,46 @@
           },
           true
         );
+        root.addEventListener("click", async (ev) => {
+          const addBtn = ev.target?.closest?.("#wledMatrixAddDisplayBtn");
+          if (addBtn && root.contains(addBtn)) {
+            ev.preventDefault();
+            const settings = api.getSettings?.() || {};
+            const ctrls = getControllers(settings);
+            const mount = root.querySelector("#wledMatrixDisplaysMount");
+            if (!mount) return;
+            const idx = mount.querySelectorAll(".wledMatrixDisplayCard").length;
+            const tmpl = normalizeWledMatrixDisplayRow(
+              {
+                id: `m_${Date.now()}_${Math.floor(Math.random() * 9999)}`,
+                controllerId: String(ctrls[0]?.id || ""),
+                segmentId: 0,
+                w: 16,
+                h: 16,
+                serpentine: false,
+                orientation: "horizontal"
+              },
+              ctrls
+            );
+            mount.insertAdjacentHTML("beforeend", renderWledMatrixDisplayCardHtml(settings, tmpl, idx));
+            try {
+              scope.__ADM_APPLY_I18N__?.();
+            } catch {
+              /* ignore */
+            }
+            void persistWledMatrix();
+            return;
+          }
+          const rm = ev.target?.closest?.("[data-wled-matrix-remove]");
+          if (rm && root.contains(rm)) {
+            const card = rm.closest(".wledMatrixDisplayCard");
+            const mount = root.querySelector("#wledMatrixDisplaysMount");
+            if (mount && card && mount.querySelectorAll(".wledMatrixDisplayCard").length > 1) {
+              card.remove();
+              void persistWledMatrix();
+            }
+          }
+        });
       }
       onWledTriggerSelectChange(root, api.getSettings?.() || {});
       syncWledPadMultUi(root);
@@ -1757,8 +2053,7 @@
         if (advancedJsonInput) advancedJsonInput.value = "";
         wledUiState.advancedJsonDraft = "";
         writeSelectedPresetTargets(root, []);
-        wledUiState.presetDropdownOpen = false;
-        refreshPresetPicker(root, api.getSettings?.() || settings);
+        refreshPresetPicker(root, api.getSettings?.() || settings, { presetDropdownOpen: false });
         if (statusEl) statusEl.textContent = lang === "en" ? "WLED effect added." : "WLED Effekt hinzugefuegt.";
       });
 
@@ -1887,6 +2182,17 @@
         });
       }
 
+      root.addEventListener(
+        "toggle",
+        (ev) => {
+          const t = ev.target;
+          if (t && t.id === "wledPresetDropdownDetails") {
+            wledUiState.presetDropdownOpen = !!t.open;
+          }
+        },
+        true
+      );
+
       root.addEventListener("click", async (ev) => {
         const foldBtn = ev.target.closest?.("[data-wled-fold]");
         if (foldBtn && root.contains(foldBtn)) {
@@ -1908,13 +2214,13 @@
           return;
         }
 
+        const presetDetails = root.querySelector("#wledPresetDropdownDetails");
         if (
-          wledUiState.presetDropdownOpen &&
-          !ev.target?.closest?.("[data-wled-preset-dropdown]") &&
-          !ev.target?.closest?.("#wledPresetDropdownBtn")
+          presetDetails?.open &&
+          !ev.target?.closest?.("[data-wled-preset-dropdown]")
         ) {
+          presetDetails.open = false;
           wledUiState.presetDropdownOpen = false;
-          refreshPresetPicker(root, api.getSettings?.() || {});
         }
 
         if (wledUiState.wledSegmentPadOpen) {
@@ -1956,13 +2262,6 @@
         const specBtn = ev.target?.closest?.("[data-wled-pad-special]");
         if (specBtn && WLED_PAD_SEGMENT_SELECTS.has(getWledSelectMode(root))) {
           applyPadSpecial(root, String(specBtn.dataset.wledPadSpecial || ""));
-          return;
-        }
-
-        const dropdownBtn = ev.target?.closest?.("#wledPresetDropdownBtn");
-        if (dropdownBtn) {
-          wledUiState.presetDropdownOpen = !wledUiState.presetDropdownOpen;
-          refreshPresetPicker(root, api.getSettings?.() || {});
           return;
         }
 
@@ -2010,8 +2309,7 @@
                 presetName: match.presetName
               }]);
           writeSelectedPresetTargets(root, nextTargets);
-          wledUiState.presetDropdownOpen = true;
-          refreshPresetPicker(root, settings);
+          refreshPresetPicker(root, settings, { presetDropdownOpen: true });
           return;
         }
 
@@ -2087,7 +2385,14 @@
       const root = api.root;
       const s = settings || {};
       const matrixMount = root.querySelector("#wledMatrixSectionMount");
-      if (matrixMount) matrixMount.innerHTML = renderWledMatrixSection(s);
+      if (matrixMount) {
+        const nextMk = wledMatrixSectionRenderKey(s);
+        if (root.__admWledMatrixSectionDomKey !== nextMk) {
+          root.__admWledMatrixSectionDomKey = nextMk;
+          matrixMount.innerHTML = renderWledMatrixSection(s);
+          void refreshAllWledMatrixDisplaySegmentSelects(root, api, s);
+        }
+      }
       const tSel = root.querySelector("#wledTestControllerSelect");
       if (tSel) {
         const prevSel = String(tSel.value || "").trim();
@@ -2122,7 +2427,7 @@
       const controllerMount = document.querySelector("#settingsWledControllersMount");
       if (controllerMount) controllerMount.innerHTML = renderControllers(s);
 
-      refreshPresetPicker(root, s);
+      refreshPresetPicker(root, s, { presetDropdownOpen: false });
 
       const effectsMount = root.querySelector("#wledEffectsListMount");
       if (effectsMount) effectsMount.innerHTML = renderEffectList(s);

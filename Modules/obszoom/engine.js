@@ -76,6 +76,66 @@
     return `${match[1]}${String(number).padStart(2, "0")}`;
   }
 
+  function parseObsZoomCustomCheckoutMapFromSettings(settings) {
+    const map = new Map();
+    const raw = String(settings?.obsZoomCustomCheckoutLines ?? "").trim();
+    if (!raw) return map;
+    const lines = raw.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = String(lines[i] || "").trim();
+      if (!line || line.startsWith("#") || line.startsWith("//")) continue;
+      const m = line.match(/^(\d{1,4})\s*:\s*(.+)$/);
+      if (!m) continue;
+      const score = Math.trunc(Number(m[1]));
+      if (!Number.isFinite(score) || score < 1 || score > 1002) continue;
+      const hint = String(m[2] || "").replace(/\s+/g, " ").trim();
+      if (hint) map.set(score, hint);
+    }
+    return map;
+  }
+
+  function pickFirstManagedCheckoutHintToken(hint) {
+    const cleaned = String(hint || "").replace(/\s+/g, " ").trim();
+    if (!cleaned) return "";
+    const parts = cleaned.split(" ");
+    for (let j = 0; j < parts.length; j += 1) {
+      const tok = String(parts[j] || "").trim();
+      if (!tok) continue;
+      const mk = normalizeManagedFilterKey(tok);
+      if (mk && mk !== "MAIN") return tok;
+    }
+    return "";
+  }
+
+  /**
+   * Überschreibt Checkout-Guide (Log + OBS-Zoom) bei konfiguriertem Rest: erstes gültiges Segment aus dem eigenen Weg.
+   * @param {string} adSuggestion — erstes Segment aus Autodarts-DOM
+   * @param {{ remainingScore?: number|null }} opts
+   * @returns {{ logLine: string, displaySegment: string, guideRaw: string, usedOverride: boolean }}
+   */
+  function resolveDomCheckoutGuide(adSuggestion, opts) {
+    const ad = String(adSuggestion || "").replace(/\s+/g, " ").trim();
+    const remRaw = opts?.remainingScore;
+    const rem =
+      remRaw != null && remRaw !== "" && Number.isFinite(Number(remRaw)) ? Math.trunc(Number(remRaw)) : NaN;
+    const settings = ADM.getSettings?.() || {};
+    const map = parseObsZoomCustomCheckoutMapFromSettings(settings);
+    const customFull = Number.isFinite(rem) && rem > 0 ? map.get(rem) : null;
+    if (!customFull) {
+      return { logLine: ad, displaySegment: ad, guideRaw: ad, usedOverride: false };
+    }
+    const firstTok = pickFirstManagedCheckoutHintToken(customFull);
+    if (!firstTok) {
+      return { logLine: ad, displaySegment: ad, guideRaw: ad, usedOverride: false };
+    }
+    const mk = normalizeManagedFilterKey(firstTok);
+    if (!mk || mk === "MAIN") {
+      return { logLine: ad, displaySegment: ad, guideRaw: ad, usedOverride: false };
+    }
+    const guideRaw = String(customFull).replace(/\s+/g, " ").trim();
+    return { logLine: guideRaw, displaySegment: firstTok, guideRaw, usedOverride: true };
+  }
+
   function normalizeManualTestTrigger(value) {
     const text = normalizeText(value);
     if (!text) return { key: "", managedKey: "", checkoutKey: "" };
@@ -709,6 +769,8 @@
       }
     }
     const domStripName = String(info?.checkoutDomPlayerName || "").trim();
+    const remInfo = info?.remainingScore;
+    const remNum = Number(remInfo);
     const payload = {
       effect: "checkout_suggestion",
       checkoutGuide: String(info?.guideRaw || displaySeg).trim(),
@@ -720,7 +782,8 @@
       matchId: st && String(st.matchId || "").trim() ? String(st.matchId).trim() : null,
       _obsZoomRequireDomPlayerColumn: true,
       ...(hasDomCol ? { player: domIdx } : {}),
-      ...(domStripName ? { playerName: domStripName } : {})
+      ...(domStripName ? { playerName: domStripName } : {}),
+      ...(Number.isFinite(remNum) ? { remainingScore: Math.trunc(remNum) } : {})
     };
     return { displaySeg, mk, payload, settings };
   }
@@ -795,6 +858,7 @@
     onCheckoutGuideLogged,
     checkoutGuidePassesPlayerFilter,
     parseEffects: parseObsZoomEffects,
-    triggerTestInput
+    triggerTestInput,
+    resolveDomCheckoutGuide
   };
 })(self);

@@ -220,12 +220,30 @@
         return false;
       }
 
+      /**
+       * Konsolenzeilen tragen optional `#123` vor `[ADM]` / `[WLED]` — Minimal-Filter
+       * muss danach prüfen, sonst verschwinden WLED-Kontextzeilen komplett.
+       */
+      function wledPlainAfterOptionalSerial(plainLower) {
+        return String(plainLower || "")
+          .trim()
+          .replace(/^#\d+\s+/i, "")
+          .trim()
+          .toLowerCase();
+      }
+
+      /**
+       * WLED Stufe 1 (ein Punkt): nur die gelbe [ADM]-Kurzzeile (printAdmWledEffectLine).
+       * Graue [WLED]-Tag-Zeilen inkl. JSON — erst Stufe 2 (zwei Punkte).
+       */
       function wledMinimalOk(plainLower) {
-        const p = String(plainLower || "").trim().toLowerCase();
-        if (/^wled controller\s+(connected|disconnected)\b/.test(p)) return true;
-        if (!/^\[wled\]/i.test(String(plainLower || "").trim())) return false;
-        if (/\bpresets loaded\b/i.test(plainLower) || /\bpresets geladen\b/i.test(plainLower)) return false;
-        if (/\bpresets fetch failed\b/i.test(plainLower) || /\bpreset trigger failed\b/i.test(plainLower)) return true;
+        const p = wledPlainAfterOptionalSerial(plainLower);
+        if (/^\[adm\]/.test(p)) {
+          if (/^\[adm\]\s*matrix\s+\d+\s*=/i.test(p)) return true;
+          const afterBadge = p.replace(/^\[adm\]\s*/i, "");
+          const pipeCount = (afterBadge.match(/\|/g) || []).length;
+          if (pipeCount >= 2) return true;
+        }
         return false;
       }
 

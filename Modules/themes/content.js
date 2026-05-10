@@ -594,10 +594,11 @@ function getBaseThemeSets() {
   };
 }
 
-function parseCustomThemes(raw, storageListLayout) {
+function parseCustomThemes(raw, storageListLayout, uiLanguage) {
   try {
     const arr = JSON.parse(String(raw || "[]"));
     if (!Array.isArray(arr)) return [];
+    const lang = uiLanguage ?? "de";
     return arr
       .filter((x) => x && typeof x === "object")
       .map((x) => {
@@ -627,6 +628,7 @@ function parseCustomThemes(raw, storageListLayout) {
           sourceName: String(x.sourceName || "").trim(),
           sourceUrl: String(x.sourceUrl || "").trim(),
           stylebotPackUrl: String(x.stylebotPackUrl || "").trim(),
+          stylebotGalleryThumbUrl: String(x.stylebotGalleryThumbUrl || "").trim(),
           description: String(x.description || "").trim(),
           stylebotImport: !!x.stylebotImport,
           playAutodartsIo:
@@ -635,7 +637,7 @@ function parseCustomThemes(raw, storageListLayout) {
               : x.playAutodartsIo && typeof x.playAutodartsIo === "object"
                 ? x.playAutodartsIo
                 : undefined,
-          tags: normalizeThemeTagsWithLayout(resolvedLayout, tagSource)
+          tags: normalizeThemeTagsWithLayout(resolvedLayout, tagSource, lang)
         };
       })
       .filter((x) => !!x.id);
@@ -654,6 +656,184 @@ function isStylebotPackThemeRow(row) {
   const tags = row.tags;
   if (Array.isArray(tags) && tags.some((t) => String(t || "").toLowerCase().includes("stylebot"))) return true;
   return false;
+}
+
+/** Gleiche Logik wie `extractStylebotPackFromRootJson` im Themes-Popup (Stylebot-JSON → CSS). */
+function extractStylebotPackFromRootJsonForThumb(json) {
+  const empty = { css: "", playIo: null, layoutFromJson: "" };
+  if (!json || typeof json !== "object") return empty;
+
+  const layoutNorm = (raw) => {
+    const s = String(raw || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/\p{M}/gu, "");
+    if (!s) return "";
+    if (/\bvertical\b/.test(s) || /\bvertikal\b/.test(s) || /\bportrait\b/.test(s) || /\bhochformat\b/.test(s)) {
+      return "vertical";
+    }
+    if (/\bhorizontal\b/.test(s) || /\bwaagerecht\b/.test(s) || /\blandscape\b/.test(s)) return "horizontal";
+    return "";
+  };
+
+  const tryHostObject = (pack) => {
+    if (!pack || typeof pack !== "object") return null;
+    const css = String(pack.css || "").trim();
+    if (!css) return null;
+    return {
+      css,
+      playIo: pack,
+      layoutFromJson: layoutNorm(pack.layout || pack.orientation)
+    };
+  };
+
+  if (typeof json.css === "string" && json.css.trim()) {
+    const css = json.css.trim();
+    return {
+      css,
+      playIo: { css },
+      layoutFromJson: layoutNorm(json.layout || json.orientation)
+    };
+  }
+
+  let h = tryHostObject(json["play.autodarts.io"]);
+  if (h) {
+    if (!h.layoutFromJson) h.layoutFromJson = layoutNorm(json.layout || json.orientation);
+    return h;
+  }
+  h = tryHostObject(json.playAutodartsIo);
+  if (h) {
+    if (!h.layoutFromJson) h.layoutFromJson = layoutNorm(json.layout || json.orientation);
+    return h;
+  }
+
+  const keys = Object.keys(json);
+  const candidates = [];
+  for (const k of keys) {
+    const v = json[k];
+    const hit = tryHostObject(v);
+    if (!hit) continue;
+    const kl = k.toLowerCase();
+    let score = 0;
+    if (kl.includes("autodarts")) score += 4;
+    if (kl.includes("play")) score += 2;
+    if (kl.includes("io") || kl.includes("host")) score += 1;
+    candidates.push({ ...hit, score });
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  if (candidates.length) {
+    const best = candidates[0];
+    if (!best.layoutFromJson) best.layoutFromJson = layoutNorm(json.layout || json.orientation);
+    return { css: best.css, playIo: best.playIo, layoutFromJson: best.layoutFromJson };
+  }
+
+  return empty;
+}
+
+async function sha1HexOfUtf8Text(text) {
+  const enc = new TextEncoder().encode(String(text || ""));
+  const buf = await globalThis.crypto.subtle.digest("SHA-1", enc);
+  const bytes = new Uint8Array(buf);
+  let hex = "";
+  for (let i = 0; i < bytes.length; i += 1) hex += bytes[i].toString(16).padStart(2, "0");
+  return hex;
+}
+
+function snapshotWebsiteThemeStateForThumb() {
+  try {
+    return structuredClone(WEBSITE_THEME_STATE);
+  } catch {
+    return JSON.parse(
+      JSON.stringify({
+        ...WEBSITE_THEME_STATE,
+        customThemesHorizontal: WEBSITE_THEME_STATE.customThemesHorizontal || [],
+        customThemesVertical: WEBSITE_THEME_STATE.customThemesVertical || [],
+        builderData: WEBSITE_THEME_STATE.builderData || {}
+      })
+    );
+  }
+}
+
+/**
+ * Kurz das echte Match-UI mit Stylebot-CSS stylen, Screenshot (wie Theme speichern), Zustand zurücksetzen.
+ * Läuft nur auf `/matches/…`-Spielfläche und nicht während des Theme-Builders.
+ */
+async function runStylebotPackLiveThumbnailCapture(msg) {
+  const packUrl = String(msg?.packUrl || "").trim();
+  if (!packUrl) return { ok: false, error: "bad_pack_url" };
+  if (BUILDER_SESSION_ACTIVE) return { ok: false, error: "builder_active" };
+  if (!pathnameIndicatesWebsiteThemesPlayfield()) return { ok: false, error: "not_match_playfield" };
+
+  let rawText = "";
+  let json = null;
+  try {
+    const r = await fetch(packUrl, { credentials: "omit", cache: "no-store" });
+    if (!r.ok) return { ok: false, error: `http_${r.status}` };
+    rawText = await r.text();
+    json = JSON.parse(rawText);
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e || "fetch_json") };
+  }
+
+  const packSig = await sha1HexOfUtf8Text(rawText);
+  const ex = extractStylebotPackFromRootJsonForThumb(json);
+  let packCss = String(ex.css || "").trim();
+  packCss = packCss.replace(/(^|[\r\n])\s*\/\/[^\r\n]*/g, "$1");
+  if (!packCss) return { ok: false, error: "no_pack_css", packSig };
+
+  let layout = String(msg?.layout || "horizontal").toLowerCase() === "vertical" ? "vertical" : "horizontal";
+  if (ex.layoutFromJson === "vertical" || ex.layoutFromJson === "horizontal") layout = ex.layoutFromJson;
+
+  const snap = snapshotWebsiteThemeStateForThumb();
+  const ghostId = `__adm_thumb_${Date.now()}__`;
+  const ghost = {
+    id: ghostId,
+    label: "adm-thumb",
+    layout,
+    css: packCss,
+    builderData: {},
+    backgroundImageDataMatch: "",
+    backgroundSize: "cover",
+    stylebotImport: true,
+    stylebotPackUrl: packUrl,
+    author: "tobyleif",
+    sourceName: "tobyleif",
+    tags: ["Stylebot"]
+  };
+  if (ex.playIo && typeof ex.playIo === "object") {
+    ghost.playAutodartsIo = ex.playIo;
+    ghost["play.autodarts.io"] = ex.playIo;
+  }
+
+  if (!Array.isArray(WEBSITE_THEME_STATE.customThemesHorizontal)) WEBSITE_THEME_STATE.customThemesHorizontal = [];
+  if (!Array.isArray(WEBSITE_THEME_STATE.customThemesVertical)) WEBSITE_THEME_STATE.customThemesVertical = [];
+  if (layout === "vertical") WEBSITE_THEME_STATE.customThemesVertical.push(ghost);
+  else WEBSITE_THEME_STATE.customThemesHorizontal.push(ghost);
+
+  WEBSITE_THEME_STATE.enabled = true;
+  WEBSITE_THEME_STATE.layout = layout;
+  WEBSITE_THEME_STATE.theme = ghostId;
+
+  try {
+    applyWebsiteThemeInternal();
+    await new Promise((r) => {
+      requestAnimationFrame(() => requestAnimationFrame(r));
+    });
+    await new Promise((r) => setTimeout(r, 520));
+    const dataUrl = await captureMatchPageGalleryThumbnailJpeg();
+    if (!String(dataUrl || "").trim().startsWith("data:image/")) {
+      return { ok: false, error: "empty_capture", packSig };
+    }
+    return { ok: true, dataUrl: String(dataUrl).trim(), packSig };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e || "capture"), packSig };
+  } finally {
+    WEBSITE_THEME_STATE = snap;
+    try {
+      applyWebsiteThemeInternal();
+    } catch {}
+  }
 }
 
 function getThemeSetsFromState(state) {
@@ -686,17 +866,53 @@ function isThemeLayoutTagToken(s) {
   );
 }
 
-/** Einheitliches Layout-Tag wie in der Galerie (Pill / Suche). */
-function layoutDisplayTagForTheme(layout) {
-  return normalizeLayout(layout) === "vertical" ? "Vertical" : "Horizontal";
+/** Einheitliches Layout-Tag (DE: Vertikal; EN: Vertical). */
+function layoutDisplayTagForTheme(layout, uiLanguage) {
+  const de = String(uiLanguage ?? "de").toLowerCase().startsWith("de");
+  return normalizeLayout(layout) === "vertical" ? (de ? "Vertikal" : "Vertical") : "Horizontal";
 }
 
-/** Immer genau ein Horizontal/Vertical-Tag vorne, Rest ohne Layout-Duplikate. */
-function normalizeThemeTagsWithLayout(layout, tags) {
-  const pill = layoutDisplayTagForTheme(layout);
+function normalizeTagTokenForCompare(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/\s+/g, " ");
+}
+
+function pickThemeStatusKindFromTagList(tags) {
+  const arr = Array.isArray(tags) ? tags : [];
+  let hasUpdate = false;
+  let hasNew = false;
+  for (const raw of arr) {
+    const lo = normalizeTagTokenForCompare(raw);
+    if (!lo) continue;
+    if (lo === "update" || lo === "updated" || lo.includes("update") || lo.includes("ui pdate")) hasUpdate = true;
+    if (lo === "neu" || lo === "new") hasNew = true;
+  }
+  if (hasUpdate) return "update";
+  if (hasNew) return "new";
+  return null;
+}
+
+function themeStatusLabelFromKind(kind, uiLanguage) {
+  if (!kind) return "";
+  const de = String(uiLanguage ?? "de").toLowerCase().startsWith("de");
+  if (kind === "update") return de ? "Update" : "Updated";
+  if (kind === "new") return de ? "Neu" : "New";
+  return "";
+}
+
+/** Nur Layout (immer zuerst) + optional Neu/Update — keine weiteren Schlagworte in `tags`. */
+function normalizeThemeTagsWithLayout(layout, tags, uiLanguage) {
+  const lang = uiLanguage ?? "de";
+  const pill = layoutDisplayTagForTheme(layout, lang);
   const raw = Array.isArray(tags) ? tags.map((t) => String(t || "").trim()).filter(Boolean) : [];
   const rest = raw.filter((t) => !isThemeLayoutTagToken(t) && String(t).trim() !== pill);
-  return [pill, ...rest];
+  const kind = pickThemeStatusKindFromTagList(rest);
+  const statusLabel = themeStatusLabelFromKind(kind, lang);
+  return statusLabel ? [pill, statusLabel] : [pill];
 }
 
 function clampHue(raw, fallback) {
@@ -722,8 +938,8 @@ function findTheme(layout, theme) {
 function normalizeWebsiteThemeSettings(settings) {
   const s = settings || {};
   const layout = normalizeLayout(s.websiteLayout);
-  const customThemesHorizontal = parseCustomThemes(s.websiteCustomThemesHorizontal, "horizontal");
-  const customThemesVertical = parseCustomThemes(s.websiteCustomThemesVertical, "vertical");
+  const customThemesHorizontal = parseCustomThemes(s.websiteCustomThemesHorizontal, "horizontal", s.uiLanguage);
+  const customThemesVertical = parseCustomThemes(s.websiteCustomThemesVertical, "vertical", s.uiLanguage);
   const tempState = { customThemesHorizontal, customThemesVertical };
   const theme = normalizeTheme(layout, s.websiteTheme, tempState);
   const themeRows = getThemeSetsFromState(tempState)[layout] || [];
@@ -862,17 +1078,21 @@ function sanitizeThemeCssInvalidSlashComments(css) {
  */
 function patchStylebotObsoleteRootBodyBackgroundSelectors(css) {
   let out = String(css || "");
-  if (!/:root:has\(\.css-[a-z0-9]+\)\s*body\s*\{/i.test(out)) return out;
+  /* Kein früher Return: manche Pakete nutzen nur `:root:not(:has(.css-…)) body` — sonst greift der Patch nie. */
   out = out.replace(/:root:has\(\.css-[a-z0-9]+\)\s*body\s*\{/gi, "html:has(#ad-ext-player-display) body {");
   out = out.replace(/:root:not\(:has\(\.css-[a-z0-9]+\)\)\s*body\s*\{/gi, "html:not(:has(#ad-ext-player-display)) body {");
   return out;
 }
 
-function buildThemeCss(cfg) {
+/**
+ * Globales Extension-Chrome um Autodarts herum. Bei echten Stylebot-JSON-Imports (`stylebotImport`)
+ * absichtlich schlank: weniger !important auf breiten Selektoren — sonst weichen Animationen / Rahmen /
+ * Marker von Stylebot im Browser ab.
+ */
+function buildAdmExtensionSharedChromeCss(cfg, stylebotImportPack) {
   const accent = "#19c7ff";
   const accentSoft = "rgba(25,199,255,.25)";
-
-  const shared = `
+  const rootBlock = `
     :root{
       --adm-accent:${accent};
       --adm-accent-soft:${accentSoft};
@@ -882,7 +1102,48 @@ function buildThemeCss(cfg) {
       --adm-arena-primary-h:${cfg.arenaPrimaryHue};
       --adm-arena-secondary-h:${cfg.arenaSecondaryHue};
       --adm-arena-tertiary-h:${cfg.arenaTertiaryHue};
+    }`;
+  const throwFieldFix = `
+    /* Remove box/outline around throw total number field */
+    [class*="throw"] [class*="MuiOutlinedInput-root"],
+    [class*="score"] [class*="MuiOutlinedInput-root"],
+    [data-testid*="score"] [class*="MuiOutlinedInput-root"],
+    [class*="visit"] [class*="MuiOutlinedInput-root"],
+    [class*="throw"] input,
+    [class*="visit"] input{
+      background:transparent !important;
+      border:none !important;
+      box-shadow:none !important;
+      outline:none !important;
     }
+    [class*="throw"] .MuiOutlinedInput-notchedOutline,
+    [class*="score"] .MuiOutlinedInput-notchedOutline,
+    [data-testid*="score"] .MuiOutlinedInput-notchedOutline,
+    [class*="visit"] .MuiOutlinedInput-notchedOutline,
+    [class*="throw"] fieldset,
+    [class*="visit"] fieldset{
+      border:none !important;
+      outline:none !important;
+      box-shadow:none !important;
+    }`;
+  const dartGlowOff =
+    cfg.dartboardGlowEnabled
+      ? ""
+      : `
+      [data-adm-dartboard-glow="1"]{
+        display:none !important;
+        opacity:0 !important;
+      }
+    `;
+  if (stylebotImportPack) {
+    return `
+    ${rootBlock}
+    ${throwFieldFix}
+    ${dartGlowOff}
+  `;
+  }
+  return `
+    ${rootBlock}
     body{
       color:var(--adm-text) !important;
     }
@@ -922,28 +1183,7 @@ function buildThemeCss(cfg) {
     [class*="score"],[data-testid*="score"],[class*="player"],[class*="Player"]{
       border-radius:10px !important;
     }
-    /* Remove box/outline around throw total number field */
-    [class*="throw"] [class*="MuiOutlinedInput-root"],
-    [class*="score"] [class*="MuiOutlinedInput-root"],
-    [data-testid*="score"] [class*="MuiOutlinedInput-root"],
-    [class*="visit"] [class*="MuiOutlinedInput-root"],
-    [class*="throw"] input,
-    [class*="visit"] input{
-      background:transparent !important;
-      border:none !important;
-      box-shadow:none !important;
-      outline:none !important;
-    }
-    [class*="throw"] .MuiOutlinedInput-notchedOutline,
-    [class*="score"] .MuiOutlinedInput-notchedOutline,
-    [data-testid*="score"] .MuiOutlinedInput-notchedOutline,
-    [class*="visit"] .MuiOutlinedInput-notchedOutline,
-    [class*="throw"] fieldset,
-    [class*="visit"] fieldset{
-      border:none !important;
-      outline:none !important;
-      box-shadow:none !important;
-    }
+    ${throwFieldFix}
     [class*="MuiPaper-root"],[class*="card"],[class*="panel"],[class*="board"]{
       border-color:var(--adm-border) !important;
     }
@@ -990,14 +1230,11 @@ function buildThemeCss(cfg) {
       pointer-events:none;
       z-index:1;
     }
-    ${cfg.dartboardGlowEnabled ? "" : `
-      [data-adm-dartboard-glow="1"]{
-        display:none !important;
-        opacity:0 !important;
-      }
-    `}
+    ${dartGlowOff}
   `;
+}
 
+function buildThemeCss(cfg) {
   const verticalLayout = `
     [class*="scoreboard"],[class*="players"],[class*="player-list"],[class*="matchHeader"]{
       display:grid !important;
@@ -1013,7 +1250,9 @@ function buildThemeCss(cfg) {
   `;
 
   const themeCfg = findTheme(cfg.layout, cfg.theme);
-  const layoutCss = cfg.layout === "vertical" ? verticalLayout : horizontalLayout;
+  const stylebotImportFidelity = !!(themeCfg && themeCfg.stylebotImport);
+  const layoutCss =
+    stylebotImportFidelity ? "" : cfg.layout === "vertical" ? verticalLayout : horizontalLayout;
   const themeIdLower = String(cfg.theme || "").toLowerCase();
   const stylebotPack =
     themeIdLower === "mrjames-ad-template" || isStylebotPackThemeRow(themeCfg);
@@ -1026,8 +1265,10 @@ function buildThemeCss(cfg) {
   /* MrJames: sehr GPU-lastig — fixed-Background triggert mit vielen Animationen oft Graublinken (Chrome). */
   const stylebotBgAttachment =
     themeIdLower === "mrjames-ad-template" || themeIdLower.startsWith("mrjames-") ? "scroll" : "fixed";
-  const stylebotBgFit = isStylebotPackThemeRow(themeCfg)
-    ? `
+  const stylebotBgFit =
+    stylebotImportFidelity || !isStylebotPackThemeRow(themeCfg)
+      ? ""
+      : `
     html,body{
       background-size:cover !important;
       background-position:center center !important;
@@ -1035,15 +1276,15 @@ function buildThemeCss(cfg) {
       background-attachment:${stylebotBgAttachment} !important;
       min-height:100% !important;
     }
-  `
-    : "";
-  /* Stylebot-like packs: helper (cover/fit) first, then full theme CSS, then user customBg last. */
+  `;
+  /* Stylebot-Pakete: ohne stylebotImport weiterhin Helper zuerst. Importierte JSON-Pakete: nur Theme+optional customBg wie Stylebot. */
   const midTail = stylebotPack
     ? `${stylebotBgFit}${themeCss}${customBg}`
     : `${themeCss}${customBg}${stylebotBgFit}`;
+  const sharedInject = buildAdmExtensionSharedChromeCss(cfg, stylebotImportFidelity && stylebotPack);
 
   return `
-    ${shared}
+    ${sharedInject}
     ${layoutCss}
     ${midTail}
     ${buildThemeBuilderChromeIsolationCss()}
@@ -5202,6 +5443,7 @@ function getWebsiteThemeFactoryDefaults() {
     websiteThemeTobyleifAutoUpdate: false,
     websiteThemeTobyleifCatalogRemoteJson: "",
     websiteThemeTobyleifCatalogMetaJson: "{}",
+    websiteThemeTobyleifLiveThumbByIdJson: "{}",
     websiteThemeBuilderTargets: "[]",
     websiteBackgroundImageData: "",
     websiteBackgroundImageDataMatch: "",
@@ -5612,8 +5854,8 @@ function showBuilderSaveDialog() {
 
               const buildPatchedSettings = async (embedPack, includeGalleryThumb) => {
                 const settings = { ...baseSettings };
-                const hList = parseCustomThemes(settings.websiteCustomThemesHorizontal, "horizontal");
-                const vList = parseCustomThemes(settings.websiteCustomThemesVertical, "vertical");
+                const hList = parseCustomThemes(settings.websiteCustomThemesHorizontal, "horizontal", settings.uiLanguage);
+                const vList = parseCustomThemes(settings.websiteCustomThemesVertical, "vertical", settings.uiLanguage);
 
                 const attachGalleryThumb = async (next, themeId) => {
                   if (!includeGalleryThumb || !galleryThumb || !themeId) return;
@@ -5648,7 +5890,7 @@ function showBuilderSaveDialog() {
                     id,
                     label,
                     layout: "horizontal",
-                    tags: normalizeThemeTagsWithLayout("horizontal", ["Builder"]),
+                    tags: normalizeThemeTagsWithLayout("horizontal", ["Builder"], settings.uiLanguage),
                     css: "",
                     savedAt,
                     ...embedPack
@@ -5671,7 +5913,7 @@ function showBuilderSaveDialog() {
                     id,
                     label,
                     layout: "vertical",
-                    tags: normalizeThemeTagsWithLayout("vertical", ["Builder"]),
+                    tags: normalizeThemeTagsWithLayout("vertical", ["Builder"], settings.uiLanguage),
                     css: "",
                     savedAt,
                     ...embedPack
@@ -6959,6 +7201,17 @@ if (chrome?.runtime?.onMessage?.addListener) {
       } catch (e) {
         sendResponse?.({ ok: false, error: String(e?.message || e || "error") });
       }
+      return true;
+    }
+    if (msg?.type === "ADM_DO_STYLEBOT_THUMB_CAPTURE") {
+      void (async () => {
+        try {
+          const out = await runStylebotPackLiveThumbnailCapture(msg);
+          sendResponse?.(out && typeof out === "object" ? out : { ok: false, error: "bad_reply" });
+        } catch (e) {
+          sendResponse?.({ ok: false, error: String(e?.message || e || "error") });
+        }
+      })();
       return true;
     }
     return undefined;

@@ -7,6 +7,11 @@
  * `[{ "file": "…json", "layout": "horizontal"|"vertical", "name": "…" }, …]`.
  */
 (function initTobyleifStylebotCatalog(scope) {
+  /**
+   * Optional `thumb`: feste Galerie-Vorschau (tobyleif.com), falls JSON-Fetch/CSS-Parsing scheitert.
+   * Optional `preview`: CSS-Variablen-Swatch für die Karte (`bg`, `panel`, `accent`, …).
+   * Remote-Katalog (`adm-autodarts-catalog.json`) kann dieselben Felder mitschicken — `module.js` merged sie.
+   */
   const allRows = [
     { file: "autodartsblau.json", layout: "horizontal", name: "Blau" },
     { file: "autodartsbronze.json", layout: "horizontal", name: "Bronze" },
@@ -30,8 +35,32 @@
     { file: "autodartspremiervert.json", layout: "vertical", name: "Premier (Vertikal)" },
     { file: "autodartsschwarz.json", layout: "horizontal", name: "Schwarz" },
     { file: "autodartsschwarzvert.json", layout: "vertical", name: "Schwarz (Vertikal)" },
-    { file: "autodartsweiss.json", layout: "horizontal", name: "Weiß" },
-    { file: "autodartsweissvert.json", layout: "vertical", name: "Weiß (Vertikal)" },
+    {
+      file: "autodartsweiss.json",
+      layout: "horizontal",
+      name: "Weiß",
+      thumb: "https://tobyleif.com/images/WhiteSquares.jpg",
+      preview: {
+        bg: "linear-gradient(135deg, #eef2f7 0%, #d8e0ea 50%, #c5d0de 100%)",
+        panel: "rgba(248, 250, 252, 0.82)",
+        accent: "#1e293b",
+        accentSoft: "rgba(30, 41, 59, 0.18)",
+        glow: "rgba(255, 255, 255, 0.45)"
+      }
+    },
+    {
+      file: "autodartsweissvert.json",
+      layout: "vertical",
+      name: "Weiß (Vertikal)",
+      thumb: "https://tobyleif.com/images/WhiteSquares.jpg",
+      preview: {
+        bg: "linear-gradient(135deg, #eef2f7 0%, #d8e0ea 50%, #c5d0de 100%)",
+        panel: "rgba(248, 250, 252, 0.82)",
+        accent: "#1e293b",
+        accentSoft: "rgba(30, 41, 59, 0.18)",
+        glow: "rgba(255, 255, 255, 0.45)"
+      }
+    },
     { file: "autodartswm.json", layout: "horizontal", name: "WM" },
     { file: "autodartswmvert.json", layout: "vertical", name: "WM (Vertikal)" }
   ];

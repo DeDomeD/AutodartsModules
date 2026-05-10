@@ -217,6 +217,11 @@
       website_bg_pick: "Bild wählen …",
       website_bg_remove: "Entfernen",
       theme_builder_notice_dismiss: "OK",
+      theme_dl_cancel: "Abbrechen",
+      theme_dl_open_tobyleif: "tobyleif.com öffnen",
+      theme_import_builder_btn: "Builder-Theme importieren …",
+      theme_import_builder_hint:
+        "Datei: .adm-builder-theme.json (Export aus dem Theme-Builder) oder ältere .autodarts-theme.json.",
       title_community: "Community",
       community_page_hint: "Externe Community-Projekte; ein Klick auf den Namen öffnet die verlinkte Seite.",
       community_section_games: "Games",
@@ -238,16 +243,68 @@
       wled_presets_refresh_btn: "Aktualisieren",
       wled_matrix_section_title: "Matrizen",
       wled_matrix_intro_hint:
-        "Punktestand und Zug-Animation. Modus „PixelIt“: POST /api/screen. Modus „WLED“: JSON seg[].i (Einzel-LEDs) — Segment in WLED muss die komplette Matrix abdecken (z. B. 256 LEDs), Verkabelung optional Serpentinen. Spieler 1 = Index 0, Spieler 2 = Index 1.",
+        "Punktestand und Zug-Animation. Modus „PixelIt“: POST /api/screen. Modus „WLED“: JSON seg[].i (Einzel-LEDs) — Segment in WLED muss die komplette Matrix abdecken (z. B. 256 LEDs), Verkabelung optional Serpentinen. Spieler 1 = Index 0, Spieler 2 = Index 1. Kleinmatrixen (z. B. 16×16): Zahlen als Block-Ziffern statt Vektorschrift (auf wenigen LEDs sonst nur Klecks). WLED-Effekt „Scrolling Text“ ist ein Geraete-interner Effekt, nicht dieselbe JSON-Pfad wie seg[].i.",
       wled_matrix_output_label: "Ausgabe",
       wled_matrix_output_pixelit: "PixelIt (/api/screen)",
       wled_matrix_output_wled: "WLED (JSON, Einzel-LEDs)",
       wled_matrix_wled_ctrl_p1: "WLED Controller Spieler 1",
       wled_matrix_wled_ctrl_p2: "WLED Controller Spieler 2",
       wled_matrix_wled_ctrl_hint: "Leer = erster bzw. zweiter Eintrag aus „Verbindungen“ (WLED Controller).",
+      wled_matrix_displays_intro:
+        "WLED-Matrizen: pro Eintrag Controller, Segment, Breite×Hoehe, Serpentine und horizontale oder vertikale LED-Reihenfolge. Beim Wechsel des Controllers werden Segmente per GET /json/state geladen.",
+      wled_matrix_displays_order_hint:
+        "Zeile 1 = Spieler 1, Zeile 2 = Spieler 2. Nur eine Zeile: beide Spieler nutzen dieselbe Matrix.",
+      wled_matrix_add_display_btn: "Matrix hinzufuegen",
+      wled_matrix_display_controller: "Controller",
+      wled_matrix_display_segment: "Segment",
+      wled_matrix_display_size_label: "Breite x Hoehe",
+      wled_matrix_display_serpentine: "Serpentinen-Verkabelung",
+      wled_matrix_display_orientation: "Ausrichtung (LED-Reihenfolge)",
+      wled_matrix_orientation_horizontal: "Horizontal (Zeilen)",
+      wled_matrix_orientation_vertical: "Vertikal (Spalten)",
       wled_matrix_wled_segment_label: "Segment-ID (WLED)",
+      wled_matrix_wled_segment_id_hint:
+        "Fallback fuer eine Matrix oder die linke Haelfte, wenn kein Name links gesetzt ist.",
+      wled_matrix_wled_seg_name_left_label: "Segment-Name links (optional)",
+      wled_matrix_wled_seg_name_left_ph: "Matrix L",
+      wled_matrix_wled_seg_name_left_hint:
+        "Exakt wie in WLED beim Segment (Name). Bei zwei Haelften links/rechts: hat Vorrang vor der Segment-ID links; die Extension laest GET /json/state und ermittelt die ID.",
+      wled_matrix_wled_seg_name_right_label: "Segment-Name rechts (optional)",
+      wled_matrix_wled_seg_name_right_ph: "Matrix R",
+      wled_matrix_wled_seg_name_right_hint:
+        "Exakt wie in WLED beim rechten Segment. Hat Vorrang vor der Segment-ID rechts.",
+      wled_matrix_wled_per_player_matrix_title:
+        "Pro Spieler (zwei getrennte Matrizen / Kette, ohne Links-Rechts-Split):",
+      wled_matrix_wled_m1_seg_name_label: "Matrix Spieler 1 — Segment-Name",
+      wled_matrix_wled_m2_seg_name_label: "Matrix Spieler 2 — Segment-Name",
+      wled_matrix_wled_m_seg_name_ph: "exakt wie in WLED",
+      wled_matrix_wled_m1_seg_id_label: "Matrix Spieler 1 — Segment-ID (Fallback)",
+      wled_matrix_wled_m2_seg_id_label: "Matrix Spieler 2 — Segment-ID (Fallback)",
+      wled_matrix_wled_m1_led_start_label: "Matrix Spieler 1 — erster LED-Index",
+      wled_matrix_wled_m2_led_start_label: "Matrix Spieler 2 — erster LED-Index",
+      wled_matrix_wled_m1_led_count_label: "Matrix Spieler 1 — LED-Anzahl (0 = w×h)",
+      wled_matrix_wled_m2_led_count_label: "Matrix Spieler 2 — LED-Anzahl (0 = w×h)",
+      wled_matrix_wled_per_player_matrix_hint:
+        "Gilt, wenn keine Zwei-Haelften-Konfiguration aktiv ist. Namen werden per GET /json/state aufgeloest; LED-Start/Anzahl fuer eine Kette im gleichen Segment.",
       wled_matrix_wled_size_label: "Matrix Breite x Hoehe",
+      wled_matrix_wled_size_hint:
+        "Max. 128×128; automatisch begrenzt, wenn Breite×Hoehe 2048 LEDs uebersteigt (wie in der Extension).",
       wled_matrix_wled_serpentine_label: "Serpentinen-Verkabelung (jede 2. Zeile gespiegelt)",
+      wled_matrix_wled_scan_mode_label: "LED-Reihenfolge (2D-Matrix)",
+      wled_matrix_wled_scan_rows: "Zeilen (horizontal, Serpentine je Zeile)",
+      wled_matrix_wled_scan_cols: "Spalten (wie WLED: Orientation Vertical + Serpentine)",
+      wled_matrix_wled_scan_mode_hint:
+        "Wenn in WLED beim 2D-Panel „Vertical“ und Serpentine aktiv sind, hier „Spalten“ waehlen — sonst stimmen Text und LEDs nicht ueberein.",
+      wled_matrix_wled_segment_right_label: "Segment-ID rechts (optional, z. B. Matrix R)",
+      wled_matrix_wled_segment_right_ph: "leer = ein Segment",
+      wled_matrix_wled_segment_right_hint:
+        "Zwei Segmente (links/rechts, je 256 LEDs): linke Segment-ID oben, rechte hier; sonst leer lassen.",
+      wled_matrix_wled_split_x_label: "Teilung bei X (Pixel, 0 = aus)",
+      wled_matrix_wled_split_x_hint:
+        "Zwei Haelften: z. B. 32×16 mit zwei Segmenten → 16. Muss kleiner als die Matrixbreite sein. Ist 0, aber „Segment rechts“ gesetzt und die Breite gerade, wird automatisch die Haelfte (w/2) verwendet.",
+      wled_matrix_wled_mirror_second_label: "Rechtes Segment: X spiegeln",
+      wled_matrix_wled_mirror_second_hint:
+        "Aktivieren, wenn in WLED beim rechten Segment „Reverse X“ an ist (sonst wirkt die rechte Haelfte gespiegelt).",
       wled_matrix_wled_fg_label: "Zahlen-Farbe (Hex)",
       wled_matrix_wled_arrow_label: "Pfeil-Farbe (Hex)",
       wled_test_section_title: "Testbereich",
@@ -375,7 +432,7 @@
       worker_mirror_cat_obs_title:
         "OBS: Minimal = Connected/Disconnected + blaue [ADM]-„Zoom …“-Zeile (OBS-Modul). Voll = u. a. checkout/managed-zoom-Diagnose ([OBS] … skipped/applied/failed + JSON).",
       worker_mirror_cat_wled_title:
-        "WLED: Minimal = Controller Connected/Disconnected + Preset-Fetch-/Trigger-Fehler. Voll = inkl. „presets loaded“ und alle weiteren WLED-Zeilen. Aus = keine.",
+        "WLED: 1 Punkt = nur gelbe [ADM]-Kurzzeilen: Preset (Name | Trigger | Preset) und Matrix (Matrix N = Punkte). 2 Punkte = erweitert: graue [WLED]-Zeilen (z. B. preset triggered mit JSON), Controller-Status, presets loaded, Fehler. Aus = keine.",
       worker_mirror_cat_all_title:
         "ALL (MISC): Standard Minimal — Extension ready + kurze [MISC]-Warnungen/Fehler. Voll = State/Events/Trigger/System + SB/OBS-Verbindungsversuche. Aus; Verbindungsversuche trotzdem sichtbar, wenn SB oder OBS auf „Voll“ stehen.",
       worker_mirror_filter_placeholder: "Filter: mehrere Begriffe durch Leerzeichen; -begriff ausblenden",
@@ -522,6 +579,10 @@
       nav_obszoom: "Zoom",
       nav_module_ready_obszoom: "Zoom — Modul fertig (Stand Extension)",
       obszoom_section_player_filter: "Trigger",
+      obszoom_custom_checkout_label: "Custom Checkout",
+      obszoom_custom_checkout_hint:
+        "Eine Zeile pro Eintrag: Rest, Doppelpunkt, dann dein Weg (z. B. 132: Bull Bull D16). Gilt nur, wenn der Rest in der Spalte zur Zeile passt und unter der Checkout-Schwelle liegt. Im Log und für den OBS-Checkout-Zoom gilt dein kompletter Weg; der Zoom nutzt das erste erkannte Segment (S/T/D, Bull, DBull, Miss).",
+      obszoom_custom_checkout_presets_aria: "Schnellvorschläge für Custom-Checkout-Zeilen",
       obszoom_player_name_btn: "Player Name",
       obszoom_player_filter_empty_status: "Immer — kein Spielername eingetragen.",
       obszoom_player_filter_when_throw: "Wenn Spieler wirft:",
@@ -543,8 +604,6 @@
         "Eine Zeile oder Komma getrennt; Gross/klein egal. Muss zum Anzeigenamen in Autodarts passen. Bei „Nur Namen“ mindestens einen Eintrag.",
       obszoom_scene_label: "Szene",
       obszoom_scenes_fold_title: "OBS Szenen",
-      obszoom_btn_configurator: "Konfigurator …",
-      obszoom_calib_hint: "Kalibrierung und OBS-Zuordnung im Konfigurator-Fenster.",
       obszoom_filter_settings_save: "Speichern",
       obszoom_filter_settings_load: "Laden",
       obszoom_filter_settings_split_aria: "Filter-Einstellungen speichern oder laden",
@@ -826,6 +885,11 @@
       website_bg_pick: "Choose image…",
       website_bg_remove: "Remove",
       theme_builder_notice_dismiss: "OK",
+      theme_dl_cancel: "Cancel",
+      theme_dl_open_tobyleif: "Open tobyleif.com",
+      theme_import_builder_btn: "Import Builder theme…",
+      theme_import_builder_hint:
+        "File: .adm-builder-theme.json (Theme Builder export) or legacy .autodarts-theme.json.",
       title_community: "Community",
       community_page_hint: "External community projects; click the name to open the linked site.",
       community_section_games: "Games",
@@ -847,16 +911,68 @@
       wled_presets_refresh_btn: "Refresh",
       wled_matrix_section_title: "Matrices",
       wled_matrix_intro_hint:
-        "Score display and turn animation. “PixelIt” mode: POST /api/screen. “WLED” mode: JSON seg[].i (per-LED) — your WLED segment must cover the full matrix (e.g. 256 LEDs); optional serpentine wiring. Player 1 = index 0, player 2 = index 1.",
+        "Score display and turn animation. “PixelIt” mode: POST /api/screen. “WLED” mode: JSON seg[].i (per-LED) — your WLED segment must cover the full matrix (e.g. 256 LEDs); optional serpentine wiring. Player 1 = index 0, player 2 = index 1. Small matrices (e.g. 16×16): scores use block digits instead of vector text (few LEDs otherwise smear). WLED’s “Scrolling Text” is an on-device effect, not the same path as seg[].i.",
       wled_matrix_output_label: "Output",
       wled_matrix_output_pixelit: "PixelIt (/api/screen)",
       wled_matrix_output_wled: "WLED (JSON, per-LED)",
       wled_matrix_wled_ctrl_p1: "WLED controller player 1",
       wled_matrix_wled_ctrl_p2: "WLED controller player 2",
       wled_matrix_wled_ctrl_hint: "Leave empty to use the 1st / 2nd entry from Connections (WLED controllers).",
+      wled_matrix_displays_intro:
+        "WLED matrices: each entry is controller, segment, width×height, serpentine, and horizontal or vertical LED order. Changing the controller loads segments via GET /json/state.",
+      wled_matrix_displays_order_hint:
+        "Row 1 = player 1, row 2 = player 2. If there is only one row, both players use that matrix.",
+      wled_matrix_add_display_btn: "Add matrix",
+      wled_matrix_display_controller: "Controller",
+      wled_matrix_display_segment: "Segment",
+      wled_matrix_display_size_label: "Width × height",
+      wled_matrix_display_serpentine: "Serpentine wiring",
+      wled_matrix_display_orientation: "Orientation (LED order)",
+      wled_matrix_orientation_horizontal: "Horizontal (rows)",
+      wled_matrix_orientation_vertical: "Vertical (columns)",
       wled_matrix_wled_segment_label: "Segment ID (WLED)",
+      wled_matrix_wled_segment_id_hint:
+        "Fallback for one matrix or the left half if no left segment name is set.",
+      wled_matrix_wled_seg_name_left_label: "Left segment name (optional)",
+      wled_matrix_wled_seg_name_left_ph: "Matrix L",
+      wled_matrix_wled_seg_name_left_hint:
+        "Exactly as shown in WLED for the segment (name field). For left/right split: overrides the left segment ID; the extension calls GET /json/state to resolve the ID.",
+      wled_matrix_wled_seg_name_right_label: "Right segment name (optional)",
+      wled_matrix_wled_seg_name_right_ph: "Matrix R",
+      wled_matrix_wled_seg_name_right_hint:
+        "Exactly as in WLED for the right segment. Overrides the right segment ID.",
+      wled_matrix_wled_per_player_matrix_title:
+        "Per player (two separate matrices / chain, no left–right split):",
+      wled_matrix_wled_m1_seg_name_label: "Matrix player 1 — segment name",
+      wled_matrix_wled_m2_seg_name_label: "Matrix player 2 — segment name",
+      wled_matrix_wled_m_seg_name_ph: "exactly as in WLED",
+      wled_matrix_wled_m1_seg_id_label: "Matrix player 1 — segment ID (fallback)",
+      wled_matrix_wled_m2_seg_id_label: "Matrix player 2 — segment ID (fallback)",
+      wled_matrix_wled_m1_led_start_label: "Matrix player 1 — first LED index",
+      wled_matrix_wled_m2_led_start_label: "Matrix player 2 — first LED index",
+      wled_matrix_wled_m1_led_count_label: "Matrix player 1 — LED count (0 = w×h)",
+      wled_matrix_wled_m2_led_count_label: "Matrix player 2 — LED count (0 = w×h)",
+      wled_matrix_wled_per_player_matrix_hint:
+        "Used when no left/right split is active. Names are resolved via GET /json/state; LED start/count for a chained range in the same segment.",
       wled_matrix_wled_size_label: "Matrix width x height",
+      wled_matrix_wled_size_hint:
+        "Up to 128×128; automatically clamped if width×height would exceed 2048 LEDs (same as the extension).",
       wled_matrix_wled_serpentine_label: "Serpentine wiring (every other row mirrored)",
+      wled_matrix_wled_scan_mode_label: "LED order (2D matrix)",
+      wled_matrix_wled_scan_rows: "Rows (horizontal, serpentine per row)",
+      wled_matrix_wled_scan_cols: "Columns (WLED: Vertical orientation + serpentine)",
+      wled_matrix_wled_scan_mode_hint:
+        "If your WLED 2D panel uses Vertical + Serpentine, pick Columns — otherwise digits and wiring won’t line up.",
+      wled_matrix_wled_segment_right_label: "Right segment ID (optional, e.g. Matrix R)",
+      wled_matrix_wled_segment_right_ph: "empty = single segment",
+      wled_matrix_wled_segment_right_hint:
+        "Two segments (left/right, 256 LEDs each): set the left segment ID above and the right one here; otherwise leave empty.",
+      wled_matrix_wled_split_x_label: "Split at X (pixels, 0 = off)",
+      wled_matrix_wled_split_x_hint:
+        "Two halves: e.g. 32×16 with two segments → 16. Must be less than matrix width. If 0 but “Right segment” is set and width is even, the extension uses half width (w/2) automatically.",
+      wled_matrix_wled_mirror_second_label: "Mirror right segment on X",
+      wled_matrix_wled_mirror_second_hint:
+        "Enable if the right WLED segment has Reverse X on (otherwise the right half looks mirrored).",
       wled_matrix_wled_fg_label: "Score color (hex)",
       wled_matrix_wled_arrow_label: "Arrow color (hex)",
       wled_test_section_title: "Test area",
@@ -984,7 +1100,7 @@
       worker_mirror_cat_obs_title:
         "OBS: minimal = connected/disconnected + blue [ADM] “Zoom …” line (OBS module). Full = checkout/managed-zoom diagnostics ([OBS] … skipped/applied/failed + JSON).",
       worker_mirror_cat_wled_title:
-        "WLED: minimal = controller connected/disconnected + preset fetch/trigger failures. Full = incl. “presets loaded” and all other WLED lines. Off = none.",
+        "WLED: 1 dot = yellow [ADM] lines only: preset summary (effect | trigger | preset) and matrix (Matrix N = score). 2 dots = extended: grey [WLED] lines (e.g. preset triggered + JSON), controller status, presets loaded, errors. Off = none.",
       worker_mirror_cat_all_title:
         "ALL (MISC): default minimal — extension ready + short [MISC] warnings/errors. Full = state/events/trigger/system plus SB/OBS connection noise. Off; connection lines still show if SB or OBS is set to full.",
       worker_mirror_filter_placeholder: "Filter: space-separated terms; -term to hide matching lines",
@@ -1131,6 +1247,10 @@
       nav_obszoom: "Zoom",
       nav_module_ready_obszoom: "Zoom — module ready (extension status)",
       obszoom_section_player_filter: "Trigger",
+      obszoom_custom_checkout_label: "Custom checkout",
+      obszoom_custom_checkout_hint:
+        "One line per rule: remaining score, colon, then your path (e.g. 132: Bull Bull D16). Applies when the column remainder matches and is at or below the checkout threshold. The worker log shows your full path; OBS checkout zoom uses the first recognized segment (S/T/D, Bull, DBull, Miss).",
+      obszoom_custom_checkout_presets_aria: "Quick-add custom checkout lines",
       obszoom_player_name_btn: "Player Name",
       obszoom_player_filter_empty_status: "Always — no player name added yet.",
       obszoom_player_filter_when_throw: "When this player throws:",
@@ -1152,8 +1272,6 @@
         "One per line or comma-separated; case-insensitive. Must match the display name in Autodarts. For “Listed names only”, add at least one.",
       obszoom_scene_label: "Scene",
       obszoom_scenes_fold_title: "OBS scenes",
-      obszoom_btn_configurator: "Configurator …",
-      obszoom_calib_hint: "Calibration and OBS mapping in the configurator window.",
       obszoom_filter_settings_save: "Save",
       obszoom_filter_settings_load: "Load",
       obszoom_filter_settings_split_aria: "Save or load filter settings",

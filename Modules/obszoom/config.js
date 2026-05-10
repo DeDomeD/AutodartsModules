@@ -33,7 +33,12 @@
       /** Wie obsZoomStickyTriple20, aber Triple-19. Nur einer wirkt — T20 hat Vorrang. */
       obsZoomStickyTriple19: false,
       /** Kalibrier-Vorschau: true = Screenshot der Ziel-Quelle (voll), false = Programm-Canvas (PGM). */
-      obsZoomCalibPreviewFromSource: false
+      obsZoomCalibPreviewFromSource: false,
+      /**
+       * Zeilen: `Rest : Weg` (z. B. `132: Bull Bull D16`). Bei passendem Rest ersetzt der Checkout-Guide
+       * die AD-Vorschlags-Zeile / den OBS-Zoom (erstes Segment des eigenen Wegs).
+       */
+      obsZoomCustomCheckoutLines: ""
     },
     actionDefaults: {
       checkout: "Checkout"
@@ -65,7 +70,8 @@
         obsZoomCalibCanvasPointJson: "{}",
         obsZoomBoardCalibJson: "{}",
         obsZoomPlayerFilterMode: "all",
-        obsZoomPlayerNamesList: ""
+        obsZoomPlayerNamesList: "",
+        obsZoomCustomCheckoutLines: ""
       }
     }
   };

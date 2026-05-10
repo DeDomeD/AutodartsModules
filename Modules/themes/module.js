@@ -4,6 +4,12 @@
   let HUE_MODAL_OPEN = false;
   /** Built-in Horizontal-Themes, die in „Alle Themes durchsuchen“ + Favoriten-Leiste wie HUE/Dark erscheinen. */
   const CATALOG_GALLERY_HORIZONTAL_IDS = new Set(["hue", "minimal", "mrjames-ad-template"]);
+  /**
+   * Öffentliche Referenz für „Original“-Download/Hinweis (MrJames-Port aus Stylebot-Paste im Bundle).
+   * Stylebot-Erweiterung — Themes dort einbinden für volle Parität zur Webseite.
+   */
+  const ADM_MRJAMES_GALLERY_ORIGINAL_REFERENCE_URL =
+    "https://chromewebstore.google.com/detail/stylebot/oiaejidbmkiecgbjeifoejpgmdaleoha";
 
   /** Snapshot aus `tobyleif-stylebot-catalog.js` (bevor ein Remote-Katalog `ADM_TOBYLEIF_STYLEBOT_CATALOG` überschreibt). */
   const ADM_TOBYLEIF_EMBEDDED_CATALOG_SNAPSHOT = (() => {
@@ -23,6 +29,8 @@
   };
   let tobyPanelVisibleHookBound = false;
   let tobyLastOnOpenRefreshMs = 0;
+  /** Verhindert parallele Bootstrap-Fetches (kein Remote-Katalog, Auto-Update aus). */
+  let tobyDirectoryCatalogBootstrapInFlight = false;
 
   function rowHasAltInTobyleifCatalog(row) {
     const hay = `${String(row?.file || "")} ${String(row?.name || "")}`.toLowerCase();
@@ -97,6 +105,9 @@
       layout = adj.layout;
       const name = String(adj.name || "").trim() || file.replace(/\.json$/i, "");
       const row = { file, layout, name };
+      const thumb = String(x.thumb || x.galleryThumbUrl || x.stylebotGalleryThumbUrl || "").trim();
+      if (thumb) row.thumb = thumb;
+      if (x.preview && typeof x.preview === "object" && Object.keys(x.preview).length) row.preview = x.preview;
       if (rowHasAltInTobyleifCatalog(row)) continue;
       out.push(row);
     }
@@ -151,10 +162,100 @@
     }
   }
 
+  function humanizeTobyleifStemForGalleryName(stemRaw) {
+    const fixes = {
+      wmold: "WM (Alt)",
+      wm: "WM",
+      vintfire: "Vintage Fire",
+      vintice: "Vintage Ice",
+      paneelgrau: "Paneel Grau",
+      paneel: "Paneel",
+      meer: "Meer",
+      holz: "Holz",
+      holz2: "Holz 2"
+    };
+    let stem = String(stemRaw || "").toLowerCase();
+    if (fixes[stem]) return fixes[stem];
+    let core = stem.replace(/([a-z])([A-Z])/g, "$1 $2");
+    core = core.replace(/([a-zA-Z])(\d)/g, "$1 $2").replace(/(\d)([a-zA-Z])/g, "$1 $2");
+    core = core.trim();
+    if (!core) return String(stemRaw || "").trim() || "Theme";
+    return core.replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  function inferTobyleifRowFromDirectoryJsonHref(href, baseUrlStr) {
+    const base = String(baseUrlStr || "").replace(/\/?$/, "/");
+    let rel = String(href || "").trim();
+    if (!rel || !/\.json$/i.test(rel)) return null;
+    if (!/^https?:\/\//i.test(rel)) {
+      try {
+        rel = new URL(rel.replace(/^\//, ""), base).href;
+      } catch {
+        return null;
+      }
+    }
+    const baseName = tobyleifCatalogFileBasename(rel);
+    if (!/^autodarts/i.test(baseName)) return null;
+    const stem = baseName.replace(/\.json$/i, "");
+    const isVert = /vert$/i.test(stem);
+    const nameStem = stem.replace(/vert$/i, "").replace(/^autodarts?/i, "");
+    const pretty = humanizeTobyleifStemForGalleryName(nameStem);
+    const name = isVert ? `${pretty} (Vertikal)` : pretty;
+    const layout = isVert ? "vertical" : "horizontal";
+    const row = { file: baseName, layout, name };
+    if (rowHasAltInTobyleifCatalog(row)) return null;
+    return row;
+  }
+
+  async function fetchTobyleifDirectoryListingInferredRows(baseUrlStr) {
+    const base = String(baseUrlStr || "").replace(/\/?$/, "/");
+    try {
+      const r = await fetch(base, { credentials: "omit", cache: "no-store" });
+      if (!r.ok) return [];
+      const html = await r.text();
+      const out = [];
+      const seen = new Set();
+      const re = /href=["']([^"'#?]+\.json)["']/gi;
+      let m;
+      while ((m = re.exec(html)) !== null) {
+        const row = inferTobyleifRowFromDirectoryJsonHref(m[1], base);
+        if (!row) continue;
+        const k = tobyleifCatalogFileBasename(String(row.file || "")).toLowerCase();
+        if (!k || seen.has(k)) continue;
+        seen.add(k);
+        out.push(row);
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
+  function mergeTobyleifJsonCatalogWithDirectoryRows(jsonArray, directoryInferredRows) {
+    const fromDir = normalizeTobyleifCatalogRows(Array.isArray(directoryInferredRows) ? directoryInferredRows : []);
+    const fromJson = normalizeTobyleifCatalogRows(Array.isArray(jsonArray) ? jsonArray : []);
+    const by = new Map();
+    for (const r of fromDir) {
+      const k = tobyleifCatalogFileBasename(String(r.file || "")).toLowerCase();
+      if (k) by.set(k, { ...r });
+    }
+    for (const r of fromJson) {
+      const k = tobyleifCatalogFileBasename(String(r.file || "")).toLowerCase();
+      if (!k) continue;
+      const prev = by.get(k) || {};
+      by.set(k, { ...prev, ...r });
+    }
+    const merged = Array.from(by.values());
+    merged.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" }));
+    return merged;
+  }
+
   async function fetchRemoteTobyleifCatalogJson(settings) {
     const base = String(globalThis.ADM_TOBYLEIF_STYLEBOT_BASE || "https://tobyleif.com/autodarts/").replace(/\/?$/, "/");
     const candidates = [`${base}adm-autodarts-catalog.json`, `${base}catalog.json`];
     let lastErr = "";
+    let jsonArr = null;
+    let catalogUrl = "";
     for (const url of candidates) {
       try {
         const r = await fetch(url, { credentials: "omit", cache: "no-store" });
@@ -173,12 +274,47 @@
           lastErr = "empty_catalog";
           continue;
         }
-        return { ok: true, rows, catalogUrl: url };
+        jsonArr = arr;
+        catalogUrl = url;
+        lastErr = "";
+        break;
       } catch (e) {
         lastErr = String(e?.message || e || "fetch");
       }
     }
-    return { ok: false, rows: null, catalogUrl: "", error: lastErr || "unreachable" };
+    let dirRows = [];
+    try {
+      dirRows = await fetchTobyleifDirectoryListingInferredRows(base);
+    } catch (e) {
+      lastErr = `${lastErr || ""};dir:${String(e?.message || e || "err")}`.replace(/^;/, "");
+    }
+    const merged = mergeTobyleifJsonCatalogWithDirectoryRows(jsonArr || [], dirRows);
+    if (!merged.length) {
+      return {
+        ok: false,
+        rows: null,
+        catalogUrl: "",
+        error: lastErr || "no_catalog_rows",
+        usedDirectoryOnly: !jsonArr && dirRows.length > 0
+      };
+    }
+    const usedJson = !!jsonArr;
+    const usedDir = dirRows.length > 0;
+    const note =
+      !usedJson && usedDir
+        ? "directory_index_only"
+        : usedJson && usedDir && merged.length > (jsonArr ? normalizeTobyleifCatalogRows(jsonArr).length : 0)
+          ? "directory_merged"
+          : usedJson
+            ? "json"
+            : "directory";
+    return {
+      ok: true,
+      rows: merged,
+      catalogUrl: catalogUrl || base,
+      error: "",
+      mergeNote: note
+    };
   }
 
   function catalogRowsFromStoredOrEmbedded(settings) {
@@ -228,6 +364,33 @@
       n: String(row?.name || ""),
       l: String(row?.layout || "").toLowerCase()
     });
+  }
+
+  function parseTobyleifLiveThumbMap(settings) {
+    try {
+      const raw = String(settings?.websiteThemeTobyleifLiveThumbByIdJson || "{}").trim();
+      const o = JSON.parse(raw);
+      return o && typeof o === "object" ? o : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function tobyleifLiveGalleryThumbRef(themeId) {
+    const id = String(themeId || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9:_-]+/g, "");
+    return id ? `adm-gthumb-tobyleif:${id}` : "";
+  }
+
+  async function sha1HexOfUtf8Text(text) {
+    const enc = new TextEncoder().encode(String(text || ""));
+    const buf = await globalThis.crypto.subtle.digest("SHA-1", enc);
+    const bytes = new Uint8Array(buf);
+    let hex = "";
+    for (let i = 0; i < bytes.length; i += 1) hex += bytes[i].toString(16).padStart(2, "0");
+    return hex;
   }
 
   function parseGalleryBadgeState(settings) {
@@ -372,7 +535,8 @@
       meta.lastCatalogRefreshMs = now;
       meta.catalogUrl = remote.catalogUrl || "";
       meta.catalogCount = remote.rows.length;
-      meta.lastError = "";
+      meta.lastError = String(remote.error || "").trim() || "";
+      meta.mergeNote = String(remote.mergeNote || "").trim();
       const nextBadge = mergeTobyleifCatalogBadgeState(prevBadge, prevRows, remote.rows, now);
       patch.websiteThemeTobyleifCatalogRemoteJson = JSON.stringify(remote.rows);
       patch.websiteThemeTobyleifCatalogMetaJson = JSON.stringify(meta);
@@ -382,6 +546,7 @@
       clearStylebotPackFetchCaches();
     } else {
       meta.lastError = remote.ok ? "empty" : String(remote.error || "catalog");
+      meta.mergeNote = "";
       patch.websiteThemeTobyleifCatalogMetaJson = JSON.stringify(meta);
       await api.savePartial(patch);
       hydrateTobyleifCatalogFromSettings({ ...st, ...patch });
@@ -393,8 +558,23 @@
   }
 
   function maybeTobyleifAutoRefreshOnGalleryOpen(api, settings, root) {
-    if (!settings?.websiteThemeTobyleifAutoUpdate) return;
-    const meta = parseTobyleifCatalogMeta(settings);
+    const st = settings || {};
+    const hasRemote = String(st.websiteThemeTobyleifCatalogRemoteJson || "").trim().length > 0;
+    if (!st.websiteThemeTobyleifAutoUpdate && !hasRemote) {
+      if (tobyDirectoryCatalogBootstrapInFlight) return;
+      tobyDirectoryCatalogBootstrapInFlight = true;
+      void (async () => {
+        try {
+          await runTobyleifCatalogRefresh(api, api.getSettings?.() || st, { repaintRoot: true, apiRoot: root });
+        } catch {
+        } finally {
+          tobyDirectoryCatalogBootstrapInFlight = false;
+        }
+      })();
+      return;
+    }
+    if (!st.websiteThemeTobyleifAutoUpdate) return;
+    const meta = parseTobyleifCatalogMeta(st);
     const last = Number(meta.lastCatalogRefreshMs) || 0;
     if (last && Date.now() - last < TOBY_CATALOG_MIN_REFRESH_MS) return;
     if (tobyleifGalleryAutoRefreshTimer) {
@@ -425,10 +605,11 @@
     };
   }
 
-  function parseCustomThemes(raw, storageListLayout) {
+  function parseCustomThemes(raw, storageListLayout, uiLanguage) {
     try {
       const arr = JSON.parse(String(raw || "[]"));
       if (!Array.isArray(arr)) return [];
+      const lang = uiLanguage ?? "de";
       return arr
         .filter((x) => x && typeof x === "object")
         .map((x) => {
@@ -448,9 +629,10 @@
             sourceName: String(x.sourceName || ""),
             sourceUrl: String(x.sourceUrl || ""),
             stylebotPackUrl: String(x.stylebotPackUrl || "").trim(),
+            stylebotGalleryThumbUrl: String(x.stylebotGalleryThumbUrl || "").trim(),
             author: String(x.author || ""),
             description: String(x.description || ""),
-            tags: normalizeThemeTagsWithLayout(resolvedLayout, tagSource),
+            tags: normalizeThemeTagsWithLayout(resolvedLayout, tagSource, lang),
             preview: x.preview && typeof x.preview === "object" ? x.preview : undefined,
             backgroundImageDataMatch: String(x.backgroundImageDataMatch || "").trim(),
             backgroundSize: String(x.backgroundSize || "").trim(),
@@ -481,7 +663,7 @@
     const customRaw = layout === "vertical"
       ? settings?.websiteCustomThemesVertical
       : settings?.websiteCustomThemesHorizontal;
-    const custom = parseCustomThemes(customRaw, layout);
+    const custom = parseCustomThemes(customRaw, layout, settings?.uiLanguage);
     const out = [...base, ...custom];
     const used = new Set();
     return out.filter((t) => {
@@ -496,7 +678,7 @@
     const customRaw = layout === "vertical"
       ? settings?.websiteCustomThemesVertical
       : settings?.websiteCustomThemesHorizontal;
-    return parseCustomThemes(customRaw, layout);
+    return parseCustomThemes(customRaw, layout, settings?.uiLanguage);
   }
 
   function normalizeLayout(raw) {
@@ -522,17 +704,57 @@
     );
   }
 
-  /** Einheitliches Layout-Tag wie in der Galerie (Pill / Suche). */
-  function layoutDisplayTagForTheme(layout) {
-    return normalizeLayout(layout) === "vertical" ? "Vertical" : "Horizontal";
+  /** Einheitliches Layout-Tag (DE: Vertikal; EN: Vertical). */
+  function layoutDisplayTagForTheme(layout, uiLanguage) {
+    const de = String(uiLanguage ?? "de").toLowerCase().startsWith("de");
+    return normalizeLayout(layout) === "vertical" ? (de ? "Vertikal" : "Vertical") : "Horizontal";
   }
 
-  /** Immer genau ein Horizontal/Vertical-Tag vorne, Rest ohne Layout-Duplikate. */
-  function normalizeThemeTagsWithLayout(layout, tags) {
-    const pill = layoutDisplayTagForTheme(layout);
+  function normalizeTagTokenForCompare(s) {
+    return String(s || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/\p{M}/gu, "")
+      .replace(/\s+/g, " ");
+  }
+
+  /** Aus beliebigen Tag-Strings nur Neu vs. Update erkennen (Update gewinnt). */
+  function pickThemeStatusKindFromTagList(tags) {
+    const arr = Array.isArray(tags) ? tags : [];
+    let hasUpdate = false;
+    let hasNew = false;
+    for (const raw of arr) {
+      const lo = normalizeTagTokenForCompare(raw);
+      if (!lo) continue;
+      if (lo === "update" || lo === "updated" || lo.includes("update") || lo.includes("ui pdate")) hasUpdate = true;
+      if (lo === "neu" || lo === "new") hasNew = true;
+    }
+    if (hasUpdate) return "update";
+    if (hasNew) return "new";
+    return null;
+  }
+
+  function themeStatusLabelFromKind(kind, uiLanguage) {
+    if (!kind) return "";
+    const de = String(uiLanguage ?? "de").toLowerCase().startsWith("de");
+    if (kind === "update") return de ? "Update" : "Updated";
+    if (kind === "new") return de ? "Neu" : "New";
+    return "";
+  }
+
+  /**
+   * Nur Layout (immer zuerst) + optional ein Status-Tag (Neu/Update).
+   * Keine weiteren Schlagworte (Stylebot, ADM, …) — die bleiben außerhalb von `tags` (z. B. tagLead).
+   */
+  function normalizeThemeTagsWithLayout(layout, tags, uiLanguage) {
+    const lang = uiLanguage ?? "de";
+    const pill = layoutDisplayTagForTheme(layout, lang);
     const raw = Array.isArray(tags) ? tags.map((t) => String(t || "").trim()).filter(Boolean) : [];
     const rest = raw.filter((t) => !isThemeLayoutTagToken(t) && String(t).trim() !== pill);
-    return [pill, ...rest];
+    const kind = pickThemeStatusKindFromTagList(rest);
+    const statusLabel = themeStatusLabelFromKind(kind, lang);
+    return statusLabel ? [pill, statusLabel] : [pill];
   }
 
   function normalizeTheme(layout, rawTheme, settings) {
@@ -615,16 +837,10 @@
     const title = escapeHtml(String(theme.label || "").trim() || theme.id);
     const creator = escapeHtml(galleryCreatorDisplayName(st, theme));
     const by = escapeHtml(tr(st, "Von", "by"));
-    const layoutPill = !theme.localSaved
-      ? `<div class="communityGalleryLayoutPill">${theme.layout === "vertical" ? "Vertical" : "Horizontal"}</div>`
-      : "";
-    const statusRow = galleryLayoutStatusRowHtml(st, theme, { inMeta: false });
     return `
       <div class="communityGalleryCardHead">
         <div class="communityGalleryCardTitle">${title}</div>
         <div class="communityGalleryCardByline"><span class="communityGalleryByPrefix">${by}</span> <span class="communityGalleryByName">${creator}</span></div>
-        ${layoutPill}
-        ${statusRow}
       </div>
     `;
   }
@@ -637,7 +853,9 @@
     const creator = escapeHtml(galleryCreatorDisplayName(st, theme));
     const by = escapeHtml(tr(st, "Von", "by"));
     const layoutPill = opts.withLayoutPill
-      ? `<div class="communityGalleryLayoutPill communityGalleryLayoutPill--inMeta">${theme.layout === "vertical" ? "Vertical" : "Horizontal"}</div>`
+      ? `<div class="communityGalleryLayoutPill communityGalleryLayoutPill--inMeta">${escapeHtml(
+          layoutDisplayTagForTheme(theme.layout, st.uiLanguage)
+        )}</div>`
       : "";
     const statusRow = galleryLayoutStatusRowHtml(st, theme, { inMeta: true });
     const builderBadge = isUserBuilderGalleryTheme(theme)
@@ -658,17 +876,23 @@
     return !!(theme && (theme.catalogPreset || theme.stylebotImport));
   }
 
-  /** Erste http(s)-URL aus CSS `url(...)` für Stylebot-Pack-Vorschau (Hintergrund aus JSON-CSS). */
-  function extractFirstHttpBackgroundUrlFromCss(cssText) {
+  /**
+   * http(s)-URLs aus `url(...)` im Pack-CSS — für Galerie-Thumbnails.
+   * Bevorzugt Pfade wie `/images/` (tobyleif), sonst erste gültige URL (z. B. erstes `background-image`).
+   */
+  function extractPreferredHttpBackgroundPreviewUrlFromCss(cssText) {
     const s = String(cssText || "");
-    const re = /\burl\s*\(\s*['"]?([^'")]+)['"]?\s*\)/gi;
+    const re = /\burl\s*\(\s*["']?(https?:\/\/[^"')]+)["']?\s*\)/gi;
+    const all = [];
     let m;
     while ((m = re.exec(s)) !== null) {
       let u = String(m[1] || "").trim();
       if (u.startsWith("//")) u = `https:${u}`;
-      if (/^https?:\/\//i.test(u)) return u;
+      if (/^https?:\/\//i.test(u)) all.push(u);
     }
-    return "";
+    if (!all.length) return "";
+    const preferred = all.find((u) => /\/images\//i.test(u));
+    return preferred || all[0];
   }
 
   const stylebotCssBgPreviewCache = new Map();
@@ -784,7 +1008,7 @@
           const ex = extractStylebotPackFromRootJson(json);
           let css = String(ex.css || "").trim();
           css = css.replace(/(^|[\r\n])\s*\/\/[^\r\n]*/g, "$1");
-          const resolved = extractFirstHttpBackgroundUrlFromCss(css) || "";
+          const resolved = extractPreferredHttpBackgroundPreviewUrlFromCss(css) || "";
           stylebotCssBgPreviewCache.set(key, resolved);
           return resolved;
         } catch {
@@ -801,33 +1025,139 @@
 
   function pickStylebotPreviewHost(rootEl) {
     if (!rootEl) return null;
+    const photoHost = rootEl.querySelector(".communityPreviewPhotoHost");
+    if (photoHost) return photoHost;
     const shell = rootEl.querySelector(".communityGalleryPreviewShell");
     if (shell) return shell;
     return rootEl.querySelector(".quickPresetPreview--photo") || rootEl.querySelector(".quickPresetPreview");
   }
 
+  /** Sehr kleine SVG-Steeldart-Scheibe für Galerie-Vorschau (viewBox 0 0 100 100). */
+  function galleryMiniDartboardSvg() {
+    const cx = 50;
+    const cy = 50;
+    const n = 20;
+    const rBed = 47;
+    const rWire = 48.5;
+    const parts = [];
+    for (let i = 0; i < n; i += 1) {
+      const a0 = ((-90 + (i * 360) / n) * Math.PI) / 180;
+      const a1 = ((-90 + ((i + 1) * 360) / n) * Math.PI) / 180;
+      const x0 = cx + rBed * Math.cos(a0);
+      const y0 = cy + rBed * Math.sin(a0);
+      const x1 = cx + rBed * Math.cos(a1);
+      const y1 = cy + rBed * Math.sin(a1);
+      const fill = i % 2 === 0 ? "#e9e0cc" : "#1a1510";
+      parts.push(
+        `<path d="M ${cx} ${cy} L ${x0.toFixed(2)} ${y0.toFixed(2)} A ${rBed} ${rBed} 0 0 1 ${x1.toFixed(2)} ${y1.toFixed(2)} Z" fill="${fill}" stroke="#0d0a08" stroke-width="0.2"/>`
+      );
+    }
+    return `<svg class="communityPreviewDartboardSvg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      ${parts.join("")}
+      <circle cx="${cx}" cy="${cy}" r="${rWire}" fill="none" stroke="#0a0806" stroke-width="0.55"/>
+      <circle cx="${cx}" cy="${cy}" r="34" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="0.35"/>
+      <circle cx="${cx}" cy="${cy}" r="40" fill="none" stroke="rgba(0,0,0,.28)" stroke-width="0.35"/>
+      <circle cx="${cx}" cy="${cy}" r="9.2" fill="#174f2d" stroke="#071208" stroke-width="0.22"/>
+      <circle cx="${cx}" cy="${cy}" r="3.4" fill="#c42828" stroke="#2a0606" stroke-width="0.18"/>
+      <circle class="communityPreviewDartHit" cx="58.5" cy="33.5" r="1.35" fill="var(--preview-accent)" opacity="0.95"/>
+      <circle class="communityPreviewDartHit" cx="39" cy="58" r="1.15" fill="#8fdf8a" opacity="0.9"/>
+    </svg>`;
+  }
+
+  /**
+   * Miniatur-„Spielfeld“ (Spieler-Karten, Score-Balken, Scheibe) über dem Theme-Hintergrund —
+   * orientiert an den bestehenden `.communityPreview*`‑Styles in popup.css.
+   */
+  function websiteGalleryPlayfieldMockHtml(theme, settings, opts) {
+    const st = settings || SETTINGS_SNAPSHOT || {};
+    const o = opts || {};
+    /** Titel/Layout-Pill liegen schon in `.communityLocalInImageMeta` — Mock-Zeile sonst doppelt darüber. */
+    const omitLabelRow = !!o.omitLabelRow;
+    const layout = normalizeLayout(theme?.layout);
+    const isVert = layout === "vertical";
+    const lang = st.uiLanguage ?? "de";
+    const layoutLbl = escapeHtml(layoutDisplayTagForTheme(layout, lang));
+    const titleRaw = String(theme?.label || theme?.id || "").trim();
+    const title = escapeHtml(titleRaw.length > 30 ? `${titleRaw.slice(0, 28)}…` : titleRaw || "Autodarts");
+    const p1 = escapeHtml(tr(st, "Spieler 1", "Player 1"));
+    const p2 = escapeHtml(tr(st, "Spieler 2", "Player 2"));
+    const playerBlock = (active, nameAttr, tall) => {
+      const cls =
+        (active ? "communityPreviewPlayer active" : "communityPreviewPlayer") + (tall ? " tall" : "");
+      return `<div class="${cls}">
+        <span class="communityAvatar" title="${nameAttr}"></span>
+        <span class="communityLine"></span>
+        <span class="communityLine short"></span>
+        <span class="communityScore${active ? "" : " dim"}"></span>
+      </div>`;
+    };
+    const mockTopBar = `<div class="communityPreviewTop">
+        <span class="communityDot"></span>
+        <span class="communityPill"></span>
+        <span class="communityChip wide"></span>
+      </div>`;
+    const mockFooter = `<div class="communityPreviewFooter">
+        <span class="communityChip"></span>
+        <span class="communityChip"></span>
+        <span class="communityChip wide"></span>
+      </div>`;
+    const ringWrap = `<div class="communityPreviewBoardRingWrap"><div class="communityPreviewDartboard">${galleryMiniDartboardSvg()}</div></div>`;
+    /** Entspricht Seitenlayout: schmal/hoch → Scores oberhalb der Scheibe; breit → seitlich. */
+    const fallbackBody = isVert
+      ? `${mockTopBar}<div class="communityPreviewScoreTopRow">
+          ${playerBlock(true, p1, false)}
+          ${playerBlock(false, p2, false)}
+        </div>${ringWrap}${mockFooter}`
+      : `${mockTopBar}<div class="communityPreviewScoreSideStage">
+          <div class="communityPreviewScoreSideCol">${playerBlock(true, p1, true)}</div>
+          ${ringWrap}
+          <div class="communityPreviewScoreSideCol">${playerBlock(false, p2, true)}</div>
+        </div>${mockFooter}`;
+    const fallbackCls = isVert ? "communityPreviewFallback communityPreviewFallback--scoreTop" : "communityPreviewFallback communityPreviewFallback--scoreSide";
+    const labelRowHtml = omitLabelRow
+      ? ""
+      : `<div class="communityPreviewLabelRow">
+        <span class="communityPreviewLabel" title="${title}">${title}</span>
+        <span class="communityPreviewLayout">${layoutLbl}</span>
+      </div>`;
+    return `<div class="communityPreviewGameMock${omitLabelRow ? " communityPreviewGameMock--noTopLabel" : ""}" aria-hidden="true">
+      ${labelRowHtml}
+      <div class="${fallbackCls}">
+        ${fallbackBody}
+      </div>
+    </div>`;
+  }
+
   function collectStylebotPackPreviewJobs(root) {
     const jobs = [];
     const hostsDone = new Set();
-    const pushJob = (rootEl, packUrl) => {
+    const pushJob = (rootEl, packUrl, staticThumbUrl) => {
       const url = String(packUrl || "").trim();
-      if (!url || !rootEl) return;
+      const staticThumb = String(staticThumbUrl || "").trim();
+      if ((!url && !staticThumb) || !rootEl) return;
       const host = pickStylebotPreviewHost(rootEl);
       if (!host || host.querySelector("img.communityPreviewImage--stylebotFetched")) return;
       if (hostsDone.has(host)) return;
       hostsDone.add(host);
-      jobs.push({ packUrl: url, host });
+      jobs.push({ packUrl: url, staticThumb, host });
     };
 
     const modal = root?.querySelector?.("#websiteCommunityThemeModal");
     if (modal?.classList.contains("open")) {
-      modal.querySelectorAll(".communityThemeCard[data-stylebot-pack-url]").forEach((card) => {
-        pushJob(card, card.getAttribute("data-stylebot-pack-url"));
+      modal.querySelectorAll(".communityThemeCard").forEach((card) => {
+        if (card.querySelector?.(".communityPreviewImage--deferredShot")) return;
+        const pk = card.getAttribute("data-stylebot-pack-url");
+        const st = card.getAttribute("data-stylebot-gallery-thumb");
+        pushJob(card, pk, st);
       });
     }
 
-    root?.querySelector?.("#websiteFavoriteGalleryStrip")?.querySelectorAll?.("[data-stylebot-pack-url]")?.forEach?.((node) => {
-      pushJob(node, node.getAttribute("data-stylebot-pack-url"));
+    root?.querySelector?.("#websiteFavoriteGalleryStrip")?.querySelectorAll?.(".quickPresetCard")?.forEach?.((node) => {
+      if (node.querySelector?.(".communityPreviewImage--deferredShot")) return;
+      const pk = node.getAttribute("data-stylebot-pack-url");
+      const st = node.getAttribute("data-stylebot-gallery-thumb");
+      if (!pk && !st) return;
+      pushJob(node, pk, st);
     });
 
     return jobs;
@@ -842,7 +1172,8 @@
       while (queue.length) {
         const job = queue.shift();
         if (!job) continue;
-        const resolved = await resolveStylebotPackPreviewImageUrl(job.packUrl);
+        const resolved =
+          String(job.staticThumb || "").trim() || (await resolveStylebotPackPreviewImageUrl(job.packUrl));
         if (!resolved || !job.host.isConnected) continue;
         if (job.host.querySelector("img.communityPreviewImage--stylebotFetched")) continue;
         const img = document.createElement("img");
@@ -1052,8 +1383,8 @@
   /** Custom-Themes aus dem Speicher → Karten für „Alle Themes durchsuchen“. */
   function localSavedThemesToGallery(settings) {
     const s = settings && typeof settings === "object" ? settings : {};
-    const h = parseCustomThemes(s.websiteCustomThemesHorizontal, "horizontal");
-    const v = parseCustomThemes(s.websiteCustomThemesVertical, "vertical");
+    const h = parseCustomThemes(s.websiteCustomThemesHorizontal, "horizontal", s.uiLanguage);
+    const v = parseCustomThemes(s.websiteCustomThemesVertical, "vertical", s.uiLanguage);
     const byKey = new Map();
     const add = (t, listLayout) => {
       const id = String(t?.id || "").toLowerCase();
@@ -1067,7 +1398,8 @@
       if (t.stylebotImport) {
         baseTags = normalizeThemeTagsWithLayout(
           layout,
-          rawTagList.length ? rawTagList : ["Stylebot", "ADM"]
+          rawTagList.length ? rawTagList : ["Stylebot", "ADM"],
+          s.uiLanguage
         );
       } else {
         const seen = new Set();
@@ -1084,7 +1416,7 @@
           if (isThemeLayoutTagToken(x)) return;
           push(x);
         });
-        baseTags = normalizeThemeTagsWithLayout(layout, out.length ? out : [builderLabel]);
+        baseTags = normalizeThemeTagsWithLayout(layout, out.length ? out : [builderLabel], s.uiLanguage);
       }
       const savedAt = Number.isFinite(Number(t.savedAt)) ? Number(t.savedAt) : 0;
       byKey.set(mapKey, {
@@ -1109,6 +1441,7 @@
         galleryScreenshot: String(t.galleryScreenshot || "").trim(),
         galleryScreenshotRef: String(t.galleryScreenshotRef || "").trim(),
         stylebotPackUrl: String(t.stylebotPackUrl || "").trim(),
+        stylebotGalleryThumbUrl: String(t.stylebotGalleryThumbUrl || "").trim(),
         stylebotImport: !!t.stylebotImport,
         playAutodartsIo:
           t["play.autodarts.io"] && typeof t["play.autodarts.io"] === "object"
@@ -1156,9 +1489,17 @@
         layout: "horizontal",
         author,
         sourceName: author,
-        sourceUrl: "",
+        sourceUrl:
+          id === "mrjames-ad-template"
+            ? String(
+                typeof globalThis.ADM_MRJAMES_STYLEBOT_ORIGINAL_PAGE === "string" &&
+                  globalThis.ADM_MRJAMES_STYLEBOT_ORIGINAL_PAGE.trim()
+                  ? globalThis.ADM_MRJAMES_STYLEBOT_ORIGINAL_PAGE.trim()
+                  : ADM_MRJAMES_GALLERY_ORIGINAL_REFERENCE_URL
+              )
+            : "",
         description,
-        tags: normalizeThemeTagsWithLayout("horizontal", [tr(st, "Voreinstellung", "Preset"), "ADM"]),
+        tags: normalizeThemeTagsWithLayout("horizontal", [tr(st, "Voreinstellung", "Preset"), "ADM"], st.uiLanguage),
         preview: row.preview && typeof row.preview === "object" ? row.preview : {},
         css: String(row.css || ""),
         builderData: {},
@@ -1173,6 +1514,75 @@
       });
     }
     return out;
+  }
+
+  /** Fallback-Swatch für Galerie-Karten, solange kein Screenshot / kein Pack-Thumbnail geladen ist. */
+  function tobyleifSyntheticPreviewForName(nameRaw) {
+    const n = String(nameRaw || "")
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/\p{M}/gu, "");
+    if (/\bweiss\b/.test(n) || /\bweiß\b/.test(n) || /\bweis\b/.test(n)) {
+      return {
+        bg: "linear-gradient(145deg, #eef2f7 0%, #d8e0ea 42%, #c5d0de 100%)",
+        panel: "rgba(248, 250, 252, 0.82)",
+        accent: "#1e293b",
+        accentSoft: "rgba(30, 41, 59, 0.18)",
+        glow: "rgba(255, 255, 255, 0.45)"
+      };
+    }
+    if (/\bschwarz\b/.test(n) || /\bblack\b/.test(n)) {
+      return {
+        bg: "linear-gradient(155deg, #0a0c10 0%, #151922 55%, #1f2633 100%)",
+        panel: "rgba(12, 16, 24, 0.82)",
+        accent: "#94a3b8",
+        accentSoft: "rgba(148, 163, 184, 0.2)",
+        glow: "rgba(148, 163, 184, 0.25)"
+      };
+    }
+    if (/\bblau\b/.test(n) || /\bblue\b/.test(n) || /\bcyan\b/.test(n)) {
+      return {
+        bg: "linear-gradient(150deg, #071a2e 0%, #0f3a5c 50%, #135a82 100%)",
+        panel: "rgba(8, 22, 40, 0.82)",
+        accent: "#38bdf8",
+        accentSoft: "rgba(56, 189, 248, 0.22)",
+        glow: "rgba(56, 189, 248, 0.35)"
+      };
+    }
+    if (/\bgruen\b/.test(n) || /\bgrün\b/.test(n) || /\bgreen\b/.test(n)) {
+      return {
+        bg: "linear-gradient(150deg, #052e1a 0%, #0b4d2d 50%, #136637 100%)",
+        panel: "rgba(6, 40, 22, 0.82)",
+        accent: "#4ade80",
+        accentSoft: "rgba(74, 222, 128, 0.2)",
+        glow: "rgba(74, 222, 128, 0.3)"
+      };
+    }
+    if (/\brot\b/.test(n) || /\bred\b/.test(n) || /\bbraun\b/.test(n)) {
+      return {
+        bg: "linear-gradient(150deg, #1a0a0a 0%, #3d1510 48%, #5c2418 100%)",
+        panel: "rgba(40, 14, 10, 0.82)",
+        accent: "#f97316",
+        accentSoft: "rgba(249, 115, 22, 0.22)",
+        glow: "rgba(249, 115, 22, 0.28)"
+      };
+    }
+    if (/\bwm\b/.test(n) || /\bpremier\b/.test(n)) {
+      return {
+        bg: "linear-gradient(150deg, #0c1020 0%, #1a2a48 50%, #243a64 100%)",
+        panel: "rgba(12, 18, 36, 0.82)",
+        accent: "#fbbf24",
+        accentSoft: "rgba(251, 191, 36, 0.2)",
+        glow: "rgba(251, 191, 36, 0.3)"
+      };
+    }
+    return {
+      bg: "linear-gradient(150deg, #0d1524 0%, #16243a 52%, #1f3350 100%)",
+      panel: "rgba(11, 18, 28, 0.78)",
+      accent: "#19c7ff",
+      accentSoft: "rgba(25, 199, 255, 0.18)",
+      glow: "rgba(25, 199, 255, 0.22)"
+    };
   }
 
   /** Galerie-Einträge für tobyleif Stylebot-JSON (ohne Speicherung bis zur Anwendung). */
@@ -1195,6 +1605,14 @@
       const name = String(row?.name || slug).trim() || slug;
       const layout = String(row?.layout || "horizontal").toLowerCase() === "vertical" ? "vertical" : "horizontal";
       const packUrl = /^https?:\/\//i.test(file) ? file.trim() : `${base}${file.replace(/^\//, "")}`;
+      const rowPreview = row.preview && typeof row.preview === "object" ? row.preview : null;
+      const staticThumb = String(row.thumb || row.stylebotGalleryThumbUrl || "").trim();
+      const liveMap = parseTobyleifLiveThumbMap(st);
+      const liveEnt = liveMap[id];
+      const liveRef =
+        liveEnt && typeof liveEnt === "object" && String(liveEnt.ref || "").trim()
+          ? String(liveEnt.ref).trim()
+          : "";
       out.push({
         id,
         label: name,
@@ -1203,13 +1621,15 @@
         sourceName: "tobyleif",
         sourceUrl: packUrl,
         stylebotPackUrl: packUrl,
+        stylebotGalleryThumbUrl: staticThumb,
         description: tr(
           st,
           "Stylebot-Paket von tobyleif.com/autodarts (JSON). Nach Anwenden lokal gespeichert.",
           "Stylebot pack from tobyleif.com/autodarts (JSON). Saved locally after apply."
         ),
-        tags: normalizeThemeTagsWithLayout(layout, ["Stylebot", "ADM"]),
-        preview: {},
+        tags: normalizeThemeTagsWithLayout(layout, ["Stylebot", "ADM"], st.uiLanguage),
+        preview:
+          rowPreview && Object.keys(rowPreview).length ? { ...rowPreview } : tobyleifSyntheticPreviewForName(name),
         css: "",
         builderData: {},
         backgroundImageDataMatch: "",
@@ -1219,7 +1639,7 @@
         needsDetail: false,
         savedAt: 1000 + idx,
         galleryScreenshot: "",
-        galleryScreenshotRef: ""
+        galleryScreenshotRef: liveRef
       });
       idx += 1;
     }
@@ -1243,11 +1663,176 @@
     const keys = ["websiteCustomThemesHorizontal", "websiteCustomThemesVertical"];
     for (const key of keys) {
       const listLayout = key === "websiteCustomThemesVertical" ? "vertical" : "horizontal";
-      const list = parseCustomThemes(settings?.[key], listLayout);
+      const list = parseCustomThemes(settings?.[key], listLayout, settings?.uiLanguage);
       const hit = list.find((t) => String(t.id || "").toLowerCase() === want);
       if (hit) return { storageKey: key, entry: { ...hit } };
     }
     return null;
+  }
+
+  function openExternalThemeUrl(settings, url) {
+    const u = String(url || "").trim();
+    if (!u) return;
+    try {
+      if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.create) {
+        chrome.tabs.create({ url: u });
+      } else {
+        window.open(u, "_blank", "noopener,noreferrer");
+      }
+    } catch {
+      try {
+        window.open(u, "_blank", "noopener,noreferrer");
+      } catch {}
+    }
+  }
+
+  function downloadAutodartsThemePackJson(themeEntry, basename) {
+    const payload = {
+      format: "autodarts-theme-pack",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      theme: themeEntry
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+    const a = document.createElement("a");
+    const safeName = String(basename || "theme").replace(/[^\w.-]+/g, "_").slice(0, 80);
+    a.href = URL.createObjectURL(blob);
+    a.download = `${safeName}.autodarts-theme.json`;
+    a.click();
+    setTimeout(() => {
+      try {
+        URL.revokeObjectURL(a.href);
+      } catch {}
+    }, 4000);
+  }
+
+  function packUrlIsTobyleifHosted(packUrl) {
+    const u = String(packUrl || "").trim();
+    if (!u) return false;
+    try {
+      return new URL(u).hostname.toLowerCase().includes("tobyleif.com");
+    } catch {
+      return /\btobyleif\.com\b/i.test(u);
+    }
+  }
+
+  function sanitizeThemeEntryForShareExport(ent) {
+    const t = ent && typeof ent === "object" ? { ...ent } : {};
+    delete t.galleryScreenshot;
+    delete t.galleryScreenshotRef;
+    delete t.savedAt;
+    delete t.galleryUpdatedAt;
+    return t;
+  }
+
+  function pickUniqueCustomThemeId(baseId, list) {
+    const used = new Set((list || []).map((x) => String(x?.id || "").toLowerCase()));
+    let id = String(baseId || "imported")
+      .toLowerCase()
+      .replace(/[^a-z0-9:_-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "imported";
+    if (!used.has(id)) return id;
+    let n = 1;
+    while (used.has(`${id}-i${n}`)) n += 1;
+    return `${id}-i${n}`;
+  }
+
+  function extractImportableThemeFromSharePayload(obj) {
+    if (!obj || typeof obj !== "object") return null;
+    if (obj.format === "adm-builder-theme-share" && obj.theme && typeof obj.theme === "object") {
+      return { layout: normalizeLayout(obj.layout || obj.theme.layout), theme: { ...obj.theme } };
+    }
+    if (obj.format === "autodarts-theme-pack" && obj.theme && typeof obj.theme === "object") {
+      return { layout: normalizeLayout(obj.theme.layout), theme: { ...obj.theme } };
+    }
+    return null;
+  }
+
+  function downloadAdmBuilderThemeShareFile(themeEntry, basename) {
+    const t = sanitizeThemeEntryForShareExport(themeEntry);
+    const layout = normalizeLayout(t.layout || "horizontal");
+    const payload = {
+      format: "adm-builder-theme-share",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      layout,
+      theme: { ...t, layout }
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+    const a = document.createElement("a");
+    const safeName = String(basename || "theme").replace(/[^\w.-]+/g, "_").slice(0, 80);
+    a.href = URL.createObjectURL(blob);
+    a.download = `${safeName}.adm-builder-theme.json`;
+    a.click();
+    setTimeout(() => {
+      try {
+        URL.revokeObjectURL(a.href);
+      } catch {}
+    }, 4000);
+  }
+
+  async function downloadRemoteJsonFileAsDownload(packUrl, basename) {
+    const u = String(packUrl || "").trim();
+    if (!u) return { ok: false, error: "no_url" };
+    const r = await fetch(u, { credentials: "omit", cache: "no-store" });
+    if (!r.ok) return { ok: false, error: `http_${r.status}` };
+    const text = await r.text();
+    const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+    const a = document.createElement("a");
+    const safe = String(basename || "stylebot-pack").replace(/[^\w.-]+/g, "_").slice(0, 80);
+    let name = safe;
+    try {
+      const seg = new URL(u).pathname.split("/").filter(Boolean).pop() || "";
+      if (/\.json$/i.test(seg)) name = seg.replace(/[^\w.-]+/g, "_").slice(0, 80);
+    } catch {}
+    a.href = URL.createObjectURL(blob);
+    a.download = /\.json$/i.test(name) ? name : `${name}.json`;
+    a.click();
+    setTimeout(() => {
+      try {
+        URL.revokeObjectURL(a.href);
+      } catch {}
+    }, 4000);
+    return { ok: true };
+  }
+
+  function tobyleifCatalogLandingUrlFromPackJsonUrl(packJsonUrl) {
+    const p = String(packJsonUrl || "").trim();
+    if (/tobyleif\.com/i.test(p)) {
+      return String(globalThis.ADM_TOBYLEIF_STYLEBOT_BASE || "https://tobyleif.com/autodarts/").replace(/\/?$/, "/");
+    }
+    try {
+      const u = new URL(p);
+      return `${u.origin}/`;
+    } catch {
+      return String(globalThis.ADM_TOBYLEIF_STYLEBOT_BASE || "https://tobyleif.com/autodarts/").replace(/\/?$/, "/");
+    }
+  }
+
+  function builtinHorizontalThemeRowForId(themeId) {
+    const want = String(themeId || "").toLowerCase();
+    const h = getThemeSets().horizontal || [];
+    return h.find((r) => String(r?.id || "").toLowerCase() === want) || null;
+  }
+
+  function buildCatalogPresetThemeExportEntry(theme) {
+    const id = String(theme?.id || "").toLowerCase();
+    const row = builtinHorizontalThemeRowForId(id);
+    if (!row) return null;
+    return {
+      id: row.id,
+      label: String(theme.label || row.label || row.id).trim() || row.id,
+      layout: "horizontal",
+      css: String(row.css || ""),
+      builderData: {},
+      backgroundImageDataMatch: "",
+      backgroundSize: "cover",
+      author: String(theme.author || "").trim(),
+      sourceName: String(theme.sourceName || "").trim(),
+      sourceUrl: String(theme.sourceUrl || "").trim(),
+      description: String(theme.description || "").trim(),
+      tags: Array.isArray(theme.tags) ? theme.tags : []
+    };
   }
 
   function getCommunityFavorites(settings) {
@@ -1388,8 +1973,14 @@
         const tidAttr = String(theme.id || "").trim().toLowerCase().replace(/"/g, "");
         const pv = theme.preview || {};
         const favLocalPhotoStyle = `--preview-bg:${pv.bg || "#14233a"}; --preview-accent:${pv.accent || "#19c7ff"};`;
-        const useStylebotPackThumb = !!(packUrlFav && !hasShot && theme?.stylebotImport);
-        const packAttrFav = useStylebotPackThumb ? ` data-stylebot-pack-url="${escapeAttr(packUrlFav)}"` : "";
+        const staticThumbFav = String(theme.stylebotGalleryThumbUrl || "").trim();
+        const useStylebotPackThumb = !!((packUrlFav || staticThumbFav) && !hasShot && theme?.stylebotImport);
+        const packAttrFav = [
+          useStylebotPackThumb && packUrlFav ? ` data-stylebot-pack-url="${escapeAttr(packUrlFav)}"` : "",
+          useStylebotPackThumb && staticThumbFav ? ` data-stylebot-gallery-thumb="${escapeAttr(staticThumbFav)}"` : ""
+        ]
+          .filter(Boolean)
+          .join("");
         const previewInner = useStylebotPackThumb
           ? `<span class="quickPresetPreview quickPresetPreview--photo" style="${escapeAttr(favLocalPhotoStyle)}"></span>`
           : hasShot
@@ -1439,8 +2030,14 @@
       const tidAttr = String(theme.id || "").trim().toLowerCase().replace(/"/g, "");
       const pv = theme.preview || {};
       const favLocalPhotoStyle = `--preview-bg:${pv.bg || "#14233a"}; --preview-accent:${pv.accent || "#19c7ff"};`;
-      const useStylebotPackThumb = !!(packUrlFav && !hasShot && theme?.stylebotImport);
-      const packAttrFav = useStylebotPackThumb ? ` data-stylebot-pack-url="${escapeAttr(packUrlFav)}"` : "";
+      const staticThumbFav = String(theme.stylebotGalleryThumbUrl || "").trim();
+      const useStylebotPackThumb = !!((packUrlFav || staticThumbFav) && !hasShot && theme?.stylebotImport);
+      const packAttrFav = [
+        useStylebotPackThumb && packUrlFav ? ` data-stylebot-pack-url="${escapeAttr(packUrlFav)}"` : "",
+        useStylebotPackThumb && staticThumbFav ? ` data-stylebot-gallery-thumb="${escapeAttr(staticThumbFav)}"` : ""
+      ]
+        .filter(Boolean)
+        .join("");
       const previewInner = useStylebotPackThumb
         ? `<span class="quickPresetPreview quickPresetPreview--photo" style="${escapeAttr(favLocalPhotoStyle)}"></span>`
         : hasShot
@@ -1463,22 +2060,31 @@
     const st = settings || SETTINGS_SNAPSHOT || {};
     const compactGallery = isGalleryCompactCard(theme);
     const layoutHint = theme.layout === "vertical" ? "vertikal vertical" : "horizontal";
-    const tagList = (Array.isArray(theme.tags) ? theme.tags : []).map((x) => String(x || "").trim()).filter(Boolean);
-    const tagHay = tagList.join(" ");
+    const lang = st.uiLanguage ?? "de";
+    const layoutPillDisplay = layoutDisplayTagForTheme(theme.layout, lang);
     const bd = computeThemeGalleryBadges(theme, Date.now(), st);
     const badgeHay = bd.showUpdated ? " update updated " : bd.showNew ? " neu new " : "";
-    const searchBlob =
-      `${String(theme.label || "")} ${galleryCreatorDisplayName(st, theme)} ${String(theme.author || "")} ${String(theme.sourceName || "")} ${String(theme.description || "")} ${tagHay} ${layoutHint}${badgeHay}`.toLowerCase();
-    const preview = theme.preview || {};
-    const previewKind = String(preview.kind || theme.id || "").toLowerCase();
+    let statusPill = "";
+    if (bd.showUpdated) statusPill = tr(st, "Update", "Updated");
+    else if (bd.showNew) statusPill = tr(st, "Neu", "New");
+    else {
+      const nk = pickThemeStatusKindFromTagList(Array.isArray(theme.tags) ? theme.tags : []);
+      statusPill = themeStatusLabelFromKind(nk, lang);
+    }
+    const secondaryTags = [layoutPillDisplay, statusPill].filter(Boolean);
     const tagLead = theme.stylebotImport
       ? tr(st, "Stylebot", "Stylebot")
       : theme.localSaved
       ? tr(st, "Gespeichert", "Saved")
       : tr(st, "Community", "Community");
+    const tagHay = [...secondaryTags, tagLead].join(" ");
+    const searchBlob =
+      `${String(theme.label || "")} ${galleryCreatorDisplayName(st, theme)} ${String(theme.author || "")} ${String(theme.sourceName || "")} ${String(theme.description || "")} ${tagHay} ${layoutHint}${badgeHay}`.toLowerCase();
+    const preview = theme.preview || {};
+    const previewKind = String(preview.kind || theme.id || "").toLowerCase();
     const tags = [
-      `<span class="communityTag">${tagLead}</span>`,
-      ...tagList.slice(0, 12).map((tag) => `<span class="communityTag">${escapeHtml(tag)}</span>`)
+      ...secondaryTags.map((tag) => `<span class="communityTag">${escapeHtml(tag)}</span>`),
+      `<span class="communityTag">${tagLead}</span>`
     ].join("");
     const sourceBtn = !compactGallery && String(theme.sourceUrl || "").trim()
       ? `<button type="button" class="btn" data-community-source="${theme.id}">${tr(st, "Quelle", "Source")}</button>`
@@ -1491,41 +2097,61 @@
           <button type="button" class="communityIconTool" data-community-favorite="${theme.id}" title="${favoriteTitleFor(theme.id, st)}">${favoriteGlyphFor(theme.id, st)}</button>
         </div>
         <div class="communityLocalHeroToolbarBottom" role="toolbar" aria-label="${tr(st, "Download und Löschen", "Download and delete")}">
-          <button type="button" class="communityIconTool" data-community-download="${theme.id}" title="${tr(st, "Download (JSON)", "Download (JSON)")}">⬇</button>
+          <button type="button" class="communityIconTool" data-community-gallery-dl="${theme.id}" title="${escapeAttr(tr(st, "Original / Download", "Original / download"))}">⬇</button>
           <button type="button" class="communityIconTool communityIconToolDanger" data-community-delete-local="${theme.id}" title="${tr(st, "Löschen", "Delete")}">🗑</button>
         </div>`
       : "";
-    const exportBtn = theme.localSaved || theme.catalogPreset || theme.stylebotImport
-      ? ""
-      : `<button type="button" class="btn" data-community-download="${theme.id}">${tr(st, "Export (JSON)", "Export (JSON)")}</button>`;
+    const galleryDownloadLabel = tr(st, "Original / Download", "Original / download");
+    const galleryDownloadBtn = `<button type="button" class="btn" data-community-gallery-dl="${theme.id}">${escapeHtml(galleryDownloadLabel)}</button>`;
+    const exportBtn = galleryDownloadBtn;
+    const downloadFab =
+      compactGallery && !theme.localSaved
+        ? `<button type="button" class="communityIconTool communityGalleryDownloadFab" data-community-gallery-dl="${theme.id}" title="${escapeAttr(galleryDownloadLabel)}">⬇</button>`
+        : "";
     /** Ganzes Karten-Element: Klick wendet an (Stern/Löschen/Download/Quelle werden vorher im Handler abgefangen). */
     const cardApplyAttr = ` data-community-apply="${theme.id}"`;
     const packUrlCard = resolveStylebotPackJsonUrl(theme);
     const packAttrCard = packUrlCard ? ` data-stylebot-pack-url="${escapeAttr(packUrlCard)}"` : "";
+    const galleryThumbUrl = String(theme.stylebotGalleryThumbUrl || "").trim();
+    const thumbAttrCard = galleryThumbUrl ? ` data-stylebot-gallery-thumb="${escapeAttr(galleryThumbUrl)}"` : "";
     const galleryShot = String(theme.galleryScreenshot || "").trim();
     const galleryRef = String(theme.galleryScreenshotRef || "").trim();
     const hasDataShot = galleryShot.startsWith("data:image/");
     const hasGalleryThumb = hasDataShot || !!galleryRef;
     const cardModifier = theme.localSaved ? " communityThemeCard--local" : compactGallery ? " communityThemeCard--galleryCompact" : "";
-    const heroPreviewClass = theme.localSaved ? " communityPreview--localHero" : compactGallery ? " communityPreview--compactHero" : "";
+    const isVertLayout = normalizeLayout(theme.layout) === "vertical";
+    const galleryMockClass = ` communityPreview--galleryMock${
+      isVertLayout ? " communityPreview--scoreTop" : " communityPreview--scoreSide"
+    }`;
+    const boardShotClass = hasGalleryThumb ? " communityPreview--hasScreenshotBoard" : "";
+    const heroPreviewClass =
+      (theme.localSaved ? " communityPreview--localHero" : compactGallery ? " communityPreview--compactHero" : "") +
+      galleryMockClass +
+      boardShotClass;
     const tidAttr = String(theme.id || "").trim().toLowerCase().replace(/"/g, "");
     /** Data-URL/Ref-Thumbnails; sonst Verlauf aus --preview-* */
     const previewImgHtml = hasGalleryThumb
       ? `<img class="communityPreviewImage communityPreviewImage--deferredShot" src="${DEFERRED_GALLERY_IMG_PLACEHOLDER}" alt="" data-theme-id="${tidAttr}" />`
       : "";
+    const playfieldMockHtml = websiteGalleryPlayfieldMockHtml(theme, st, {
+      omitLabelRow: !!(theme.localSaved || compactGallery)
+    });
+    /** Immer Layout-Pill (Horizontal/Vertikal): auch nach „Anwenden“ (`localSaved`), sonst fehlt sie bei „Neu“-Badge nur noch „Neu“. */
     const inImageMetaHtml = theme.localSaved
-      ? galleryLocalInImageMetaHtml(st, theme)
+      ? galleryLocalInImageMetaHtml(st, theme, { withLayoutPill: true })
       : compactGallery
       ? galleryLocalInImageMetaHtml(st, theme, { withLayoutPill: true })
       : "";
     const showLargeCardMeta = !theme.localSaved && !compactGallery;
     return `
-      <div class="communityThemeCard${cardModifier}${isCommunityThemeActive(theme, st) ? " active" : ""}" data-community-card="${theme.id}" data-gallery-search="${escapeAttr(searchBlob)}" data-gallery-layout="${escapeAttr(String(theme.layout || "horizontal"))}"${cardApplyAttr}${packAttrCard}>
+      <div class="communityThemeCard${cardModifier}${isCommunityThemeActive(theme, st) ? " active" : ""}" data-community-card="${theme.id}" data-gallery-search="${escapeAttr(searchBlob)}" data-gallery-layout="${escapeAttr(String(theme.layout || "horizontal"))}"${cardApplyAttr}${packAttrCard}${thumbAttrCard}>
         <div class="communityGalleryPreviewShell communityPreview preview-${previewKind}${heroPreviewClass}" style="--preview-bg:${preview.bg || "#16243a"}; --preview-panel:${preview.panel || "rgba(11,18,28,.78)"}; --preview-accent:${preview.accent || "#19c7ff"}; --preview-accent-soft:${preview.accentSoft || "rgba(25,199,255,.18)"}; --preview-glow:${preview.glow || "rgba(25,199,255,.22)"};">
           ${starInShell}
-          ${previewImgHtml}
+          <div class="communityPreviewPhotoHost">${previewImgHtml}</div>
+          ${playfieldMockHtml}
           ${inImageMetaHtml}
           ${localHeroChrome}
+          ${downloadFab}
         </div>
         ${showLargeCardMeta ? galleryCardMetaHtml(st, theme) : ""}
         ${showLargeCardMeta
@@ -1544,6 +2170,11 @@
   }
 
   let SETTINGS_SNAPSHOT = {};
+  /** gesetzt in `bind(api)` — für Live-Thumbnails ohne `paint`-Signaturänderung */
+  let THEMES_MODULE_API_REF = null;
+  let tobyleifLiveThumbPaintTimer = null;
+  const tobyleifLiveThumbInflight = new Set();
+  let tobyleifLiveThumbSessionDone = 0;
 
   function favoriteGlyphFor(themeId, settings) {
     return getCommunityFavorites(settings).includes(String(themeId || "").toLowerCase()) ? "★" : "☆";
@@ -1592,7 +2223,6 @@
     return `
       <label class="communityTobyAutoPill" title="${escapeAttr(title)}">
         <input type="checkbox"${checked} data-tobyleif-auto-update="1" class="communityTobyAutoPillInput" />
-        <span class="communityTobyAutoPillMark" aria-hidden="true">✓</span>
         <span class="communityTobyAutoPillText">${escapeHtml(tr(st, "Auto-Update", "Auto-update"))}</span>
       </label>
       <button type="button" class="btnMini communityTobyRefresh" data-tobyleif-catalog-refresh="1" title="${escapeAttr(
@@ -1654,6 +2284,121 @@
     `;
   }
 
+  function scheduleTobyleifLiveGalleryThumbnails(root) {
+    if (!COMMUNITY_GALLERY_OPEN || !chrome?.runtime?.sendMessage) return;
+    if (tobyleifLiveThumbPaintTimer) {
+      try {
+        clearTimeout(tobyleifLiveThumbPaintTimer);
+      } catch {}
+      tobyleifLiveThumbPaintTimer = null;
+    }
+    tobyleifLiveThumbPaintTimer = setTimeout(() => {
+      tobyleifLiveThumbPaintTimer = null;
+      void runTobyleifLiveGalleryThumbJobs(root);
+    }, 700);
+  }
+
+  async function runTobyleifLiveGalleryThumbJobs(root) {
+    const api = THEMES_MODULE_API_REF;
+    if (!COMMUNITY_GALLERY_OPEN || !api || !root) return;
+    const perOpen = 6;
+    const st0 = api.getSettings?.() || {};
+    const candidates = getCommunityThemes(st0).filter(
+      (t) =>
+        isTobyleifStylebotGalleryTheme(t) &&
+        t.stylebotImport &&
+        !t.localSaved &&
+        String(t.id || "").toLowerCase().startsWith("tobyleif-")
+    );
+    for (const theme of candidates) {
+      if (tobyleifLiveThumbSessionDone >= perOpen) break;
+      const id = String(theme.id || "").toLowerCase();
+      if (!id || tobyleifLiveThumbInflight.has(id)) continue;
+      const packUrl = resolveStylebotPackJsonUrl(theme);
+      if (!packUrl) continue;
+      const ref = tobyleifLiveGalleryThumbRef(id);
+      if (!ref) continue;
+
+      let remoteSig = "";
+      try {
+        const r = await fetch(packUrl, { credentials: "omit", cache: "force-cache" });
+        if (!r.ok) continue;
+        remoteSig = await sha1HexOfUtf8Text(await r.text());
+      } catch {
+        continue;
+      }
+
+      const map0 = parseTobyleifLiveThumbMap(st0);
+      const prev = map0[id];
+      if (
+        prev &&
+        typeof prev === "object" &&
+        String(prev.sig || "").trim() === remoteSig &&
+        String(prev.ref || "").trim() === ref
+      ) {
+        const verify = await new Promise((resolve) => {
+          try {
+            chrome.runtime.sendMessage({ type: "ADM_GALLERY_THUMB_GET", ref }, (reply) => {
+              void chrome.runtime.lastError;
+              resolve(reply && typeof reply === "object" ? reply : { ok: false });
+            });
+          } catch {
+            resolve({ ok: false });
+          }
+        });
+        if (verify?.ok && String(verify.dataUrl || "").startsWith("data:image/")) continue;
+      }
+
+      tobyleifLiveThumbInflight.add(id);
+      tobyleifLiveThumbSessionDone += 1;
+      try {
+        const cap = await new Promise((resolve) => {
+          try {
+            chrome.runtime.sendMessage(
+              {
+                type: "ADM_REQUEST_STYLEBOT_THUMB_CAPTURE",
+                packUrl,
+                layout: String(theme.layout || "horizontal"),
+                themeId: id
+              },
+              (reply) => {
+                void chrome.runtime.lastError;
+                resolve(reply && typeof reply === "object" ? reply : { ok: false, error: "bad_reply" });
+              }
+            );
+          } catch (e) {
+            resolve({ ok: false, error: String(e?.message || e) });
+          }
+        });
+        const sigOut = String(cap?.packSig || remoteSig).trim() || remoteSig;
+        if (!cap?.ok || !String(cap?.dataUrl || "").startsWith("data:image/")) {
+          continue;
+        }
+        const put = await new Promise((resolve) => {
+          try {
+            chrome.runtime.sendMessage(
+              { type: "ADM_GALLERY_THUMB_PUT", ref, dataUrl: cap.dataUrl },
+              (reply) => {
+                void chrome.runtime.lastError;
+                resolve(reply && typeof reply === "object" ? reply : { ok: false });
+              }
+            );
+          } catch {
+            resolve({ ok: false });
+          }
+        });
+        if (!put?.ok) continue;
+        const st1 = api.getSettings?.() || {};
+        const map1 = { ...parseTobyleifLiveThumbMap(st1) };
+        map1[id] = { ref, sig: sigOut };
+        await api.savePartial({ websiteThemeTobyleifLiveThumbByIdJson: JSON.stringify(map1) });
+        paint(root, api.getSettings?.() || {});
+      } finally {
+        tobyleifLiveThumbInflight.delete(id);
+      }
+    }
+  }
+
   function paint(root, settings) {
     if (!root) return;
     SETTINGS_SNAPSHOT = settings || {};
@@ -1697,6 +2442,7 @@
     wireDeferredThemeScreenshots(root, settings);
     bindCommunityPreviewImageFallbacks(root);
     void hydrateStylebotPackPreviews(root);
+    scheduleTobyleifLiveGalleryThumbnails(root);
     if (primaryVal) primaryVal.textContent = `${primaryHue}°`;
     if (secondaryVal) secondaryVal.textContent = `${secondaryHue}°`;
     if (tertiaryVal) tertiaryVal.textContent = `${tertiaryHue}°`;
@@ -1851,7 +2597,7 @@
         layout = ex.layoutFromJson;
       }
       const listKey = layout === "vertical" ? "websiteCustomThemesVertical" : "websiteCustomThemesHorizontal";
-      const list = parseCustomThemes(settings[listKey], layout);
+      const list = parseCustomThemes(settings[listKey], layout, settings?.uiLanguage);
       const prevSlot = list.find((t) => String(t.id || "").toLowerCase() === id);
       const prevCss = String(prevSlot?.css || "").trim();
       const entry = {
@@ -1869,7 +2615,8 @@
         description: String(theme.description || "").trim(),
         tags: normalizeThemeTagsWithLayout(
           layout,
-          Array.isArray(theme.tags) && theme.tags.length ? theme.tags : ["Stylebot"]
+          Array.isArray(theme.tags) && theme.tags.length ? theme.tags : ["Stylebot"],
+          settings?.uiLanguage
         ),
         savedAt: Number.isFinite(Number(prevSlot?.savedAt)) ? Number(prevSlot.savedAt) : Date.now(),
         galleryUpdatedAt:
@@ -1880,7 +2627,14 @@
               : 0,
         galleryScreenshot: "",
         galleryScreenshotRef: "",
-        stylebotImport: true
+        stylebotImport: true,
+        stylebotGalleryThumbUrl: String(theme.stylebotGalleryThumbUrl || prevSlot?.stylebotGalleryThumbUrl || "").trim(),
+        preview:
+          theme.preview && typeof theme.preview === "object" && Object.keys(theme.preview).length
+            ? theme.preview
+            : prevSlot?.preview && typeof prevSlot.preview === "object" && Object.keys(prevSlot.preview).length
+              ? prevSlot.preview
+              : undefined
       };
       if (ex.playIo && typeof ex.playIo === "object") {
         entry.playAutodartsIo = ex.playIo;
@@ -1907,7 +2661,7 @@
     const listKey = rawHit?.storageKey
       ? rawHit.storageKey
       : (layout === "vertical" ? "websiteCustomThemesVertical" : "websiteCustomThemesHorizontal");
-    const list = parseCustomThemes(settings[listKey], layout);
+    const list = parseCustomThemes(settings[listKey], layout, settings?.uiLanguage);
     const prev = rawHit?.entry && typeof rawHit.entry === "object" ? { ...rawHit.entry } : {};
     const themeBd = theme.builderData && typeof theme.builderData === "object" ? theme.builderData : null;
     const prevBd = prev.builderData && typeof prev.builderData === "object" ? prev.builderData : {};
@@ -1943,7 +2697,8 @@
           ? theme.tags
           : Array.isArray(prev.tags)
             ? prev.tags
-            : []
+            : [],
+        settings?.uiLanguage
       ),
       savedAt: Number.isFinite(Number(theme.savedAt)) ? Number(theme.savedAt) : (Number(prev.savedAt) || Date.now()),
       galleryUpdatedAt: (() => {
@@ -2005,7 +2760,13 @@
             <div id="themeBuilderSideNotice" class="admSidePanelWarning" hidden role="alert">
               <div class="admSidePanelWarningTitle" id="themeBuilderSideNoticeTitle"></div>
               <p class="admSidePanelWarningBody" id="themeBuilderSideNoticeBody"></p>
-              <button type="button" class="btn admSidePanelWarningDismiss" id="themeBuilderSideNoticeDismiss" data-i18n="theme_builder_notice_dismiss">OK</button>
+              <div class="admSidePanelWarningFooter" id="themeBuilderSideNoticeFooterSingle">
+                <button type="button" class="btnPrimary fullWidthBtn" id="themeBuilderSideNoticeDismiss" data-i18n="theme_builder_notice_dismiss">OK</button>
+              </div>
+              <div class="admSidePanelWarningFooter admSidePanelWarningFooter--split" id="themeBuilderSideNoticeFooterConfirm" hidden>
+                <button type="button" class="btn" id="themeBuilderSideNoticeCancel" data-i18n="theme_dl_cancel">Abbrechen</button>
+                <button type="button" class="btnPrimary" id="themeBuilderSideNoticeConfirm" data-i18n="theme_dl_open_tobyleif">tobyleif.com öffnen</button>
+              </div>
             </div>
             <div class="hint">Startet den Builder auf der Match-Seite.</div>
           </div>
@@ -2077,6 +2838,9 @@
               <button id="openCommunityThemeGallery" class="btnPrimary fullWidthBtn" type="button">Alle Themes durchsuchen</button>
             </div>
             <div class="hint">Eigene Builder-Themes, HUE/Dark (DeDomeD), Stylebot (tobyleif.com/autodarts) — Ausrichtung filtern, Suche nach Name/Ersteller. Favoriten-Stern: Leiste oben. In der Galerie: Auto-Update / ↻ lädt optional Katalog-JSON von tobyleif (adm-autodarts-catalog.json oder catalog.json).</div>
+            <input type="file" id="admImportBuilderThemeFile" accept=".json,.adm-builder-theme.json,application/json" hidden />
+            <button type="button" class="btn fullWidthBtn" id="admImportBuilderThemeBtn" data-i18n="theme_import_builder_btn">Builder-Theme importieren …</button>
+            <div class="hint" data-i18n="theme_import_builder_hint">Datei: .adm-builder-theme.json (Export aus dem Theme-Builder) oder ältere .autodarts-theme.json.</div>
           </div>
 
           <div id="websiteHueModalMount" style="display:none">
@@ -2130,13 +2894,27 @@
       `;
     },
     bind(api) {
+      THEMES_MODULE_API_REF = api;
       const root = api.root;
 
+      let sideNoticeConfirmAction = null;
+
       function hideThemeBuilderSideNotice() {
+        sideNoticeConfirmAction = null;
+        const single = root.querySelector("#themeBuilderSideNoticeFooterSingle");
+        const conf = root.querySelector("#themeBuilderSideNoticeFooterConfirm");
+        if (single) single.hidden = false;
+        if (conf) conf.hidden = true;
         const box = root.querySelector("#themeBuilderSideNotice");
         if (box) box.hidden = true;
       }
+
       function showThemeBuilderSideNotice(title, body) {
+        sideNoticeConfirmAction = null;
+        const single = root.querySelector("#themeBuilderSideNoticeFooterSingle");
+        const conf = root.querySelector("#themeBuilderSideNoticeFooterConfirm");
+        if (single) single.hidden = false;
+        if (conf) conf.hidden = true;
         const box = root.querySelector("#themeBuilderSideNotice");
         const tEl = root.querySelector("#themeBuilderSideNoticeTitle");
         const bEl = root.querySelector("#themeBuilderSideNoticeBody");
@@ -2152,7 +2930,188 @@
           window.__ADM_APPLY_I18N__?.();
         } catch {}
       }
+
+      function showThemeBuilderSideNoticeConfirm(title, body, onConfirm) {
+        sideNoticeConfirmAction = typeof onConfirm === "function" ? onConfirm : null;
+        const single = root.querySelector("#themeBuilderSideNoticeFooterSingle");
+        const conf = root.querySelector("#themeBuilderSideNoticeFooterConfirm");
+        if (single) single.hidden = true;
+        if (conf) conf.hidden = false;
+        const box = root.querySelector("#themeBuilderSideNotice");
+        const tEl = root.querySelector("#themeBuilderSideNoticeTitle");
+        const bEl = root.querySelector("#themeBuilderSideNoticeBody");
+        if (tEl) tEl.textContent = title;
+        if (bEl) bEl.textContent = body;
+        if (box) {
+          box.hidden = false;
+          try {
+            box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          } catch {}
+        }
+        try {
+          window.__ADM_APPLY_I18N__?.();
+        } catch {}
+      }
+
       root.querySelector("#themeBuilderSideNoticeDismiss")?.addEventListener("click", hideThemeBuilderSideNotice);
+      root.querySelector("#themeBuilderSideNoticeCancel")?.addEventListener("click", hideThemeBuilderSideNotice);
+      root.querySelector("#themeBuilderSideNoticeConfirm")?.addEventListener("click", () => {
+        const fn = sideNoticeConfirmAction;
+        sideNoticeConfirmAction = null;
+        const single = root.querySelector("#themeBuilderSideNoticeFooterSingle");
+        const conf = root.querySelector("#themeBuilderSideNoticeFooterConfirm");
+        if (single) single.hidden = false;
+        if (conf) conf.hidden = true;
+        const box = root.querySelector("#themeBuilderSideNotice");
+        if (box) box.hidden = true;
+        try {
+          fn?.();
+        } catch {}
+      });
+
+      function runCommunityThemeDownload(themeId) {
+        const id = String(themeId || "").toLowerCase();
+        if (!id) return;
+        const st = api.getSettings?.() || {};
+        const theme = getCommunityThemes(st).find((t) => String(t.id || "").toLowerCase() === id);
+
+        if (theme && theme.catalogPreset) {
+          if (id === "mrjames-ad-template") {
+            const entry = buildCatalogPresetThemeExportEntry(theme);
+            if (!entry) return;
+            downloadAutodartsThemePackJson(entry, id);
+            return;
+          }
+          if (id === "hue" || id === "minimal") {
+            showThemeBuilderSideNotice(
+              tr(st, "Download", "Download"),
+              tr(
+                st,
+                "Dieses Design ist kein Stylebot-Skript (fest in Autodart-Modules integriert). Ein Datei-Download wie bei Stylebot-Paketen ist daher nicht vorgesehen.",
+                "This design is not a Stylebot script (it is built into Autodart Modules). A file download like Stylebot-style packs is not available."
+              )
+            );
+            return;
+          }
+        }
+
+        if (theme && theme.stylebotImport && !theme.catalogPreset) {
+          const packUrl = resolveStylebotPackJsonUrl(theme) || String(theme.sourceUrl || "").trim();
+          if (!packUrl) return;
+          if (packUrlIsTobyleifHosted(packUrl)) {
+            const u = tobyleifCatalogLandingUrlFromPackJsonUrl(packUrl);
+            showThemeBuilderSideNoticeConfirm(
+              tr(st, "tobyleif.com", "tobyleif.com"),
+              tr(
+                st,
+                "Das Original-Stylebot-Theme liegt bei tobyleif.com. Mit „tobyleif.com öffnen“ wird die Seite in einem neuen Tab geöffnet (optional mit installierter Stylebot-Erweiterung für die nächst an die Website herankommende Darstellung).",
+                "The original Stylebot theme is hosted on tobyleif.com. “Open tobyleif.com” opens that page in a new tab (optionally with the Stylebot extension for the closest match to the website)."
+              ),
+              () => openExternalThemeUrl(st, u)
+            );
+            return;
+          }
+          void (async () => {
+            const r = await downloadRemoteJsonFileAsDownload(packUrl, id);
+            if (!r?.ok) {
+              showThemeBuilderSideNotice(
+                tr(st, "Download", "Download"),
+                tr(
+                  st,
+                  `Stylebot-JSON konnte nicht geladen werden (${String(r?.error || "")}).`,
+                  `Could not download Stylebot JSON (${String(r?.error || "")}).`
+                )
+              );
+            }
+          })();
+          return;
+        }
+
+        const raw = findRawCustomThemeById(st, id);
+        if (raw?.entry) {
+          const ent = raw.entry;
+          const packUrl = resolveStylebotPackJsonUrl(ent) || String(ent.stylebotPackUrl || ent.sourceUrl || "").trim();
+          if (ent.stylebotImport && packUrl) {
+            if (packUrlIsTobyleifHosted(packUrl)) {
+              showThemeBuilderSideNoticeConfirm(
+                tr(st, "tobyleif.com", "tobyleif.com"),
+                tr(
+                  st,
+                  "Dieses Stylebot-Paket stammt von tobyleif.com. Mit „tobyleif.com öffnen“ wird die Paket-Übersicht dort in einem neuen Tab geöffnet.",
+                  "This Stylebot pack is hosted on tobyleif.com. “Open tobyleif.com” opens the pack overview there in a new tab."
+                ),
+                () => openExternalThemeUrl(st, tobyleifCatalogLandingUrlFromPackJsonUrl(packUrl))
+              );
+            } else {
+              void (async () => {
+                const r = await downloadRemoteJsonFileAsDownload(packUrl, id);
+                if (!r?.ok) {
+                  showThemeBuilderSideNotice(
+                    tr(st, "Download", "Download"),
+                    tr(
+                      st,
+                      `Stylebot-JSON konnte nicht geladen werden (${String(r?.error || "")}).`,
+                      `Could not download Stylebot JSON (${String(r?.error || "")}).`
+                    )
+                  );
+                }
+              })();
+            }
+            return;
+          }
+          if (!ent.stylebotImport) {
+            downloadAdmBuilderThemeShareFile(ent, id);
+            return;
+          }
+        }
+      }
+
+      root.querySelector("#admImportBuilderThemeBtn")?.addEventListener("click", () => {
+        root.querySelector("#admImportBuilderThemeFile")?.click?.();
+      });
+      root.querySelector("#admImportBuilderThemeFile")?.addEventListener("change", async (ev) => {
+        const input = ev.target;
+        const f = input?.files?.[0];
+        if (input) input.value = "";
+        if (!f) return;
+        const st = api.getSettings?.() || {};
+        try {
+          const text = await f.text();
+          const obj = JSON.parse(text);
+          const hit = extractImportableThemeFromSharePayload(obj);
+          if (!hit) {
+            showThemeBuilderSideNotice(
+              tr(st, "Import", "Import"),
+              tr(
+                st,
+                "Ungültige Datei: Erwartet wird „adm-builder-theme-share“ (Export aus dem Theme-Builder) oder ein älteres „autodarts-theme-pack“.",
+                "Invalid file: expected “adm-builder-theme-share” (Theme Builder export) or legacy “autodarts-theme-pack”."
+              )
+            );
+            return;
+          }
+          const layout = hit.layout;
+          const listKey = layout === "vertical" ? "websiteCustomThemesVertical" : "websiteCustomThemesHorizontal";
+          const list = parseCustomThemes(st[listKey], layout, st.uiLanguage);
+          const next = { ...hit.theme };
+          next.layout = layout;
+          next.id = pickUniqueCustomThemeId(String(next.id || "imported"), list);
+          next.savedAt = Date.now();
+          next.galleryScreenshot = "";
+          next.galleryScreenshotRef = "";
+          next.galleryUpdatedAt = 0;
+          if (!String(next.label || "").trim()) next.label = String(next.id);
+          const merged = upsertCustomThemeList(list, next);
+          await api.savePartial({ [listKey]: JSON.stringify(merged) });
+          hideThemeBuilderSideNotice();
+          paint(root, api.getSettings?.() || {});
+        } catch (e) {
+          showThemeBuilderSideNotice(
+            tr(st, "Import", "Import"),
+            tr(st, `Konnte Datei nicht lesen: ${String(e?.message || e)}`, `Could not read file: ${String(e?.message || e)}`)
+          );
+        }
+      });
 
       api.bindAuto(root, "websiteArenaPrimaryHue", "websiteArenaPrimaryHue", "number");
       api.bindAuto(root, "websiteArenaSecondaryHue", "websiteArenaSecondaryHue", "number");
@@ -2400,6 +3359,7 @@
       });
       root.querySelector("#openCommunityThemeGallery")?.addEventListener("click", () => {
         COMMUNITY_GALLERY_OPEN = true;
+        tobyleifLiveThumbSessionDone = 0;
         const st = api.getSettings?.() || {};
         paint(root, st);
         maybeTobyleifAutoRefreshOnGalleryOpen(api, st, root);
@@ -2537,7 +3497,7 @@
             });
           }
           const themeLayout = raw.storageKey === "websiteCustomThemesVertical" ? "vertical" : "horizontal";
-          const list = parseCustomThemes(settings[raw.storageKey], themeLayout);
+          const list = parseCustomThemes(settings[raw.storageKey], themeLayout, settings?.uiLanguage);
           const filtered = list.filter((t) => String(t.id || "").toLowerCase() !== id);
           const patch = { [raw.storageKey]: JSON.stringify(filtered) };
           const curLayout = normalizeLayout(settings.websiteLayout);
@@ -2553,28 +3513,11 @@
           return;
         }
 
-        const downloadBtn = target.closest("[data-community-download]");
-        if (downloadBtn) {
-          const id = String(downloadBtn.dataset.communityDownload || "").toLowerCase();
-          const raw = findRawCustomThemeById(settings, id);
-          if (!raw?.entry) return;
-          const payload = {
-            format: "autodarts-theme-pack",
-            version: 1,
-            exportedAt: new Date().toISOString(),
-            theme: raw.entry
-          };
-          const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
-          const a = document.createElement("a");
-          const safeName = String(id || "theme").replace(/[^\w.-]+/g, "_").slice(0, 80);
-          a.href = URL.createObjectURL(blob);
-          a.download = `${safeName}.autodarts-theme.json`;
-          a.click();
-          setTimeout(() => {
-            try {
-              URL.revokeObjectURL(a.href);
-            } catch {}
-          }, 4000);
+        const galleryDlBtn = target.closest("[data-community-gallery-dl]");
+        if (galleryDlBtn) {
+          const id = String(galleryDlBtn.dataset.communityGalleryDl || "").toLowerCase();
+          if (!id) return;
+          runCommunityThemeDownload(id);
           return;
         }
 

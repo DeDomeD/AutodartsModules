@@ -2797,7 +2797,16 @@
         return;
       }
       const visitSum = Number(s?.turnVisitSum);
-      const sig = `${String(s?.matchId ?? "").trim() || "_"}|${Number.isFinite(visitSum) ? visitSum : "?"}|${nextThrow}|${segRaw.toUpperCase()}`;
+      let resolvedCheckout = null;
+      try {
+        resolvedCheckout = ADM.obsZoom?.resolveDomCheckoutGuide?.(segRaw, { remainingScore: rem });
+      } catch (_) {
+        resolvedCheckout = null;
+      }
+      if (!resolvedCheckout || typeof resolvedCheckout !== "object") {
+        resolvedCheckout = { logLine: segRaw, displaySegment: segRaw, guideRaw: segRaw, usedOverride: false };
+      }
+      const sig = `${String(s?.matchId ?? "").trim() || "_"}|${Number.isFinite(visitSum) ? visitSum : "?"}|${nextThrow}|${String(resolvedCheckout.logLine || segRaw).toUpperCase()}`;
       if (sig === runtimeState.lastDomCheckoutGuideSig) return;
       runtimeState.lastDomCheckoutGuideSig = sig;
       const domAiCheckout =
@@ -2820,7 +2829,9 @@
         ADM.triggerWorkerLog?.printCheckoutGuideLine?.(segRaw, {
           nextThrow,
           domActivePlayerIndex: domAiCheckout,
-          checkoutDomPlayerName: checkoutDomPlayerName || undefined
+          checkoutDomPlayerName: checkoutDomPlayerName || undefined,
+          remainingScore: rem,
+          resolvedCheckoutGuide: resolvedCheckout
         });
       } catch (_) {}
       return;

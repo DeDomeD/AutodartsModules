@@ -38,7 +38,12 @@
       /** JSON-Array [{ file, layout, name }] nach erfolgreichem Remote-Katalog; leer = nur eingebettete Liste */
       websiteThemeTobyleifCatalogRemoteJson: "",
       /** JSON { lastCheckMs, lastCatalogRefreshMs, pingOk, lastError, catalogUrl, catalogCount } */
-      websiteThemeTobyleifCatalogMetaJson: "{}"
+      websiteThemeTobyleifCatalogMetaJson: "{}",
+      /**
+       * JSON `Record<themeId, { ref: string, sig: string }>` — Live-Galerie-Screenshot (Match-Seite) pro Tobyleif-Pack;
+       * `sig` = SHA-1 (hex) der rohen Stylebot-JSON-Textantwort, damit bei geändertem Pack neu gerendert wird.
+       */
+      websiteThemeTobyleifLiveThumbByIdJson: "{}"
     },
     ini: {
       togglesBool: [
@@ -65,7 +70,8 @@
         websiteBackgroundImageDataMenu: "",
         websiteBackgroundSize: "cover",
         websiteThemeTobyleifCatalogRemoteJson: "",
-        websiteThemeTobyleifCatalogMetaJson: "{}"
+        websiteThemeTobyleifCatalogMetaJson: "{}",
+        websiteThemeTobyleifLiveThumbByIdJson: "{}"
       }
     }
   };
