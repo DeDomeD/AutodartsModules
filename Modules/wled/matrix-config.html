@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Matrix Config</title>
+    <link rel="stylesheet" href="matrix-config.css" />
+  </head>
+  <body>
+    <header class="mc-header">
+      <h1 id="mcTitle">Matrix Config</h1>
+      <p id="mcHint" class="mc-hint"></p>
+      <p id="mcMeta" class="mc-meta"></p>
+    </header>
+    <div class="mc-toolbar">
+      <button type="button" id="mcClear" class="mc-btn">Alle aus</button>
+      <button type="button" id="mcSend" class="mc-btn mc-btn--primary">An WLED senden</button>
+      <span id="mcHover" class="mc-hover" aria-live="polite"></span>
+    </div>
+    <div id="mcGridWrap" class="mc-grid-wrap">
+      <div id="mcGrid" class="mc-grid" role="grid" aria-label="LED matrix"></div>
+    </div>
+    <p id="mcStatus" class="mc-status" role="status"></p>
+    <script src="matrix-config.js"></script>
+  </body>
+</html>

@@ -19,6 +19,8 @@
   let OBS_TEST_TRIGGER = "T20";
   /** OBS-Szenen-Karte im Popup: eingeklappt = Inhalt verborgen. */
   let OBS_SCENES_UI_COLLAPSED = false;
+  /** Custom-Checkout-Untermenü: standardmäßig zu — nur Session (nicht in settings.ini). */
+  let OBS_CUSTOM_CHECKOUT_UI_COLLAPSED = true;
   const OBS_MOVE_PLUGIN_DOWNLOAD_URL = "https://obsproject.com/forum/resources/move.913/";
   const DEFAULT_WEBSITE_BASE = "https://autodarts-modules-production.up.railway.app";
   /** Voreinstellungen für Custom Checkout (Rest → eigener Weg); Anklicken fügt/ersetzt Zeile. */
@@ -82,20 +84,26 @@
     return arr.map((s) => normalizeText(s)).filter(Boolean).join("\n");
   }
 
+  function extractCustomCheckoutScoreKey(rawLine) {
+    const add = String(rawLine || "").trim().replace(/^\uFEFF/, "");
+    let m = add.match(/^(\d{1,4})\s*[:=\uFF1A;]/);
+    if (!m) m = add.match(/^(\d{1,4})\s+[-\u2013]\s/);
+    return m ? m[1] : null;
+  }
+
   function upsertCustomCheckoutLine(currentText, newLine) {
     const add = String(newLine || "").trim();
     if (!add) return String(currentText || "").trimEnd();
-    const sm = add.match(/^(\d{1,4})\s*:/);
-    if (!sm) {
+    const sc = extractCustomCheckoutScoreKey(add);
+    if (!sc) {
       const base = String(currentText || "").trimEnd();
       return base ? `${base}\n${add}` : add;
     }
-    const sc = sm[1];
     const baseLines = String(currentText || "").split(/\r?\n/);
     const kept = baseLines.filter((raw) => {
       const ln = String(raw || "").trim();
       if (!ln) return true;
-      return !new RegExp(`^\\s*${sc}\\s*:`).test(ln);
+      return extractCustomCheckoutScoreKey(ln) !== sc;
     });
     return [...kept, add].join("\n");
   }
@@ -106,6 +114,22 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  /** Anzeige-Teile für Preset-Kacheln (nur escapte Strings in HTML). */
+  function formatCustomCheckoutPresetParts(line) {
+    const raw = String(line || "").trim();
+    let m = raw.match(/^(\d{1,4})\s*[:=\uFF1A;]\s*(.+)$/);
+    if (!m) m = raw.match(/^(\d{1,4})\s+[-\u2013]\s+(.+)$/);
+    if (!m) {
+      return { scoreHtml: escapeObsChipHtml("?"), pathHtml: escapeObsChipHtml(raw), attrEsc: escapeObsChipHtml(raw) };
+    }
+    const path = String(m[2] || "").replace(/\s+/g, " ").trim();
+    return {
+      scoreHtml: escapeObsChipHtml(m[1]),
+      pathHtml: escapeObsChipHtml(path),
+      attrEsc: escapeObsChipHtml(raw)
+    };
   }
 
   function obsZoomT(api, key) {
@@ -188,6 +212,12 @@
     const det = root.querySelector("#obsZoomScenesDetails");
     if (!det) return;
     det.open = !OBS_SCENES_UI_COLLAPSED;
+  }
+
+  function updateObsZoomCustomCheckoutCollapseUi(root) {
+    const det = root.querySelector("#obsZoomCustomCheckoutDetails");
+    if (!det) return;
+    det.open = !OBS_CUSTOM_CHECKOUT_UI_COLLAPSED;
   }
 
   function renderConnectionButton(kind, label, opts = {}) {
@@ -712,31 +742,37 @@
             <input class="input" id="obsZoomCheckoutTriggerThreshold" type="number" min="2" max="170" step="1" value="170" />
             <div class="hint" data-i18n="checkout_threshold_hint">Ab diesem Restwert und darunter wird der Checkout-Trigger aktiv.</div>
           </div>
-          <div class="formRow" style="margin-top:12px;">
-            <label class="label" for="obsZoomCustomCheckoutLines" data-i18n="obszoom_custom_checkout_label">Custom Checkout</label>
-            <textarea
-              class="input"
-              id="obsZoomCustomCheckoutLines"
-              rows="4"
-              style="width:100%;max-width:420px;font-family:inherit;resize:vertical;"
-              spellcheck="false"
-              placeholder="132: Bull Bull D16"
-            ></textarea>
-            <div class="hint" data-i18n="obszoom_custom_checkout_hint"></div>
-            <div
-              class="miniButtonRow"
-              style="flex-wrap:wrap;margin-top:8px;gap:6px;"
-              role="group"
-              data-i18n-aria-label="obszoom_custom_checkout_presets_aria"
-            >
-              ${OBS_ZOOM_CUSTOM_CHECKOUT_PRESETS.map((line) => {
-                const m = line.match(/^(\d+)/);
-                const lab = m ? m[1] : "?";
-                const esc = escapeObsChipHtml(line);
-                return `<button type="button" class="btnMini" title="${esc}" data-obs-zoom-custom-checkout-preset="${esc}">${lab}</button>`;
-              }).join("")}
+          <details class="bgUploadDropdown formRow obsZoomCustomCheckoutDetails" id="obsZoomCustomCheckoutDetails"${OBS_CUSTOM_CHECKOUT_UI_COLLAPSED ? "" : " open"}>
+            <summary class="btnPrimary fullWidthBtn bgUploadSummary obsZoomCustomCheckoutSummary" data-i18n-aria-label="obszoom_custom_checkout_fold_aria" data-i18n-title="obszoom_custom_checkout_fold_aria">
+              <span class="obsZoomCustomCheckoutSummaryInner">
+                <span class="obsZoomCustomCheckoutFoldTitle" data-i18n="obszoom_custom_checkout_label">Custom Checkout</span>
+                <span class="obsZoomCustomCheckoutFoldRight">
+                  <span class="obsZoomCustomCheckoutTag" data-i18n="obszoom_custom_checkout_tag">Log · OBS</span>
+                  <span class="ddArrow obsZoomCustomCheckoutSummaryArrow" aria-hidden="true"></span>
+                </span>
+              </span>
+            </summary>
+            <div class="bgUploadBody obsZoomCustomCheckoutBody">
+              <div class="obsZoomCustomCheckoutBlock">
+                <label class="label" for="obsZoomCustomCheckoutLines" data-i18n="obszoom_custom_checkout_lines_label">Regeln</label>
+                <textarea
+                  class="input obsZoomCustomCheckoutTextarea"
+                  id="obsZoomCustomCheckoutLines"
+                  rows="4"
+                  spellcheck="false"
+                  placeholder="132: Bull Bull D16"
+                ></textarea>
+                <p class="hint obsZoomCustomCheckoutHint" data-i18n="obszoom_custom_checkout_hint"></p>
+                <div class="obsZoomCustomCheckoutPresetsLabel" data-i18n="obszoom_custom_checkout_presets_label"></div>
+                <div class="obsZoomCustomCheckoutPresets" role="group" data-i18n-aria-label="obszoom_custom_checkout_presets_aria">
+                  ${OBS_ZOOM_CUSTOM_CHECKOUT_PRESETS.map((line) => {
+                    const ui = formatCustomCheckoutPresetParts(line);
+                    return `<button type="button" class="obsZoomCustomCheckoutPreset" title="${ui.attrEsc}" data-obs-zoom-custom-checkout-preset="${ui.attrEsc}"><span class="obsZoomCustomCheckoutPresetScore">${ui.scoreHtml}</span><span class="obsZoomCustomCheckoutPresetPath">${ui.pathHtml}</span></button>`;
+                  }).join("")}
+                </div>
+              </div>
             </div>
-          </div>
+          </details>
           <div class="formRow" style="margin-top:10px;">
             <button type="button" class="btnPrimary obsZoomPlayerNameBtn" id="btnObsZoomAddPlayerName" data-i18n="obszoom_player_name_btn">Player Name</button>
           </div>
@@ -979,6 +1015,11 @@
         const det = root.querySelector("#obsZoomScenesDetails");
         if (!det) return;
         OBS_SCENES_UI_COLLAPSED = !det.open;
+      });
+      root.querySelector("#obsZoomCustomCheckoutDetails")?.addEventListener("toggle", () => {
+        const det = root.querySelector("#obsZoomCustomCheckoutDetails");
+        if (!det) return;
+        OBS_CUSTOM_CHECKOUT_UI_COLLAPSED = !det.open;
       });
       root.querySelector("#btnRefreshObsScenes")?.addEventListener("click", async () => {
         await reloadObsScenes(api, root, false);
@@ -1304,6 +1345,7 @@
       }
       api.refreshConnectionStatuses?.();
       updateObsZoomScenesCollapseUi(root);
+      updateObsZoomCustomCheckoutCollapseUi(root);
     },
     async refreshObsListsOnPopupOpen(api) {
       const root = api?.root;

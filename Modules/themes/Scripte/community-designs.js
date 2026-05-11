@@ -1,5 +1,5 @@
 (function initThemesCommunityDesigns(scope) {
-  scope.AD_SB_WEBSITE_COMMUNITY_THEMES = [
+  scope.ADM_WEBSITE_COMMUNITY_THEMES = [
     {
       id: "pimp-arena",
       label: "Pimp Arena",
@@ -207,8 +207,8 @@
   ];
   (function mergeCommunityDesignsIntoThemeSets(s) {
     try {
-      const list = s.AD_SB_WEBSITE_COMMUNITY_THEMES;
-      const sets = s.AD_SB_WEBSITE_THEME_SETS;
+      const list = s.ADM_WEBSITE_COMMUNITY_THEMES;
+      const sets = s.ADM_WEBSITE_THEME_SETS;
       if (!Array.isArray(list) || !sets) return;
       const existing = new Set();
       for (const key of ["horizontal", "vertical"]) {

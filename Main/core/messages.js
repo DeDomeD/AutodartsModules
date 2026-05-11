@@ -88,10 +88,16 @@
     return String(url || DEFAULT_WEBSITE_API_URL).trim().replace(/\/+$/, "");
   }
 
-  async function startGoogleAuthFlow(baseUrlRaw) {
+  /**
+   * OAuth redirect flow for the website API (Google or Discord).
+   * Server routes: /api/auth/{provider}/start → redirect → /account.html?auth=success&token=…&user=…
+   */
+  async function startWebsiteOAuthFlow(baseUrlRaw, provider) {
+    const pv = String(provider || "google").trim().toLowerCase();
     const baseUrl = normalizeWebsiteApiUrl(baseUrlRaw);
-    const startUrl = `${baseUrl}/api/auth/google/start?returnTo=${encodeURIComponent("/account.html")}`;
+    const startUrl = `${baseUrl}/api/auth/${encodeURIComponent(pv)}/start?returnTo=${encodeURIComponent("/account.html")}`;
     const accountPrefix = `${baseUrl}/account.html`;
+    const label = pv === "discord" ? "Discord" : "Google";
 
     return new Promise((resolve, reject) => {
       if (!chrome?.tabs?.create || !chrome?.tabs?.onUpdated?.addListener || !chrome?.tabs?.onRemoved?.addListener) {
@@ -106,7 +112,7 @@
         if (done) return;
         done = true;
         cleanup();
-        reject(error instanceof Error ? error : new Error(String(error || "Google login failed")));
+        reject(error instanceof Error ? error : new Error(String(error || `${label} login failed`)));
       }
 
       function finishOk(result) {
@@ -139,7 +145,7 @@
               user = rawUser ? JSON.parse(rawUser) : null;
             } catch {}
             if (!token || !user) {
-              finishError(new Error("Google login returned incomplete account data"));
+              finishError(new Error(`${label} login returned incomplete account data`));
               return;
             }
             await ADM.setSettings({
@@ -152,7 +158,7 @@
             return;
           }
 
-          const error = String(parsed.searchParams.get("error") || "Google login failed");
+          const error = String(parsed.searchParams.get("error") || `${label} login failed`);
           try { chrome.tabs.remove(tabId, () => void chrome.runtime?.lastError); } catch {}
           finishError(new Error(error));
         } catch (e) {
@@ -162,7 +168,7 @@
 
       function handleRemoved(tabId) {
         if (tabId !== authTabId || done) return;
-        finishError(new Error("Google login tab was closed"));
+        finishError(new Error(`${label} login tab was closed`));
       }
 
       chrome.tabs.onUpdated.addListener(handleUpdated);
@@ -175,7 +181,7 @@
         }
         authTabId = tab?.id ?? null;
         if (!Number.isInteger(authTabId)) {
-          finishError(new Error("Could not open Google login tab"));
+          finishError(new Error(`Could not open ${label} login tab`));
         }
       });
     });
@@ -427,6 +433,13 @@
     return { ok: false, error: lastErr };
   }
 
+  function tabEffectiveUrl(tabOrUrl) {
+    if (tabOrUrl && typeof tabOrUrl === "object") {
+      return String(tabOrUrl.url || tabOrUrl.pendingUrl || "").trim();
+    }
+    return String(tabOrUrl || "").trim();
+  }
+
   function tabUrlLooksLikeAutodartsMatchPlay(url) {
     try {
       const u = new URL(String(url || ""));
@@ -448,7 +461,7 @@
             return;
           }
           const tabs = Array.isArray(all) ? all : [];
-          const matchTabs = tabs.filter((t) => tabUrlLooksLikeAutodartsMatchPlay(t.url));
+          const matchTabs = tabs.filter((t) => tabUrlLooksLikeAutodartsMatchPlay(tabEffectiveUrl(t)));
           if (!matchTabs.length) {
             resolve(null);
             return;
@@ -457,7 +470,7 @@
             const fe = chrome.runtime?.lastError;
             const fTab = !fe && Array.isArray(focused) ? focused[0] : null;
             const fid = fTab?.id;
-            const fav = fTab?.url || "";
+            const fav = tabEffectiveUrl(fTab);
             if (Number.isInteger(fid) && tabUrlLooksLikeAutodartsMatchPlay(fav)) {
               const exact = matchTabs.find((x) => x.id === fid);
               if (exact) {
@@ -474,21 +487,39 @@
     });
   }
 
-  function tabUrlLooksLikeAutodartsStatistics(url) {
+  function tabHostIsPlayAutodarts(url) {
     try {
       const u = new URL(String(url || ""));
       const host = u.hostname.toLowerCase();
-      const okHost =
-        host === "play.autodarts.io" ||
-        host.endsWith(".play.autodarts.io") ||
-        host === "autodarts.io" ||
-        host.endsWith(".autodarts.io");
-      if (!okHost) return false;
-      const path = String(u.pathname || "") + String(u.hash || "");
-      return /\bstatistics\b/i.test(path);
+      return host === "play.autodarts.io" || host.endsWith(".play.autodarts.io");
     } catch {
       return false;
     }
+  }
+
+  function tabUrlLooksLikeAutodartsStatistics(url) {
+    try {
+      const raw = String(url || "").trim();
+      if (!raw || raw.startsWith("chrome://") || raw.startsWith("edge://") || raw.startsWith("about:")) {
+        return false;
+      }
+      const u = new URL(raw);
+      if (!tabHostIsPlayAutodarts(raw)) return false;
+      const needle = String(u.pathname || "") + String(u.hash || "") + String(u.search || "");
+      if (/\bstatistics\b/i.test(needle)) return true;
+      if (/[?&](tab|page|view|section)=statistics\b/i.test(String(u.search || ""))) return true;
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Wenn die SPA-URL kein „statistics“ enthält, aber der Tab-Titel wie auf der Statistik-Seite ist. */
+  function tabLooksLikeStatisticsByTitle(tab) {
+    const url = tabEffectiveUrl(tab);
+    if (!tabHostIsPlayAutodarts(url)) return false;
+    const title = String(tab.title || "");
+    return /\bstatistics\b/i.test(title) || /\bstatistik\b/i.test(title);
   }
 
   function findAutodartsStatisticsTabId() {
@@ -501,7 +532,10 @@
             return;
           }
           const tabs = Array.isArray(all) ? all : [];
-          const statTabs = tabs.filter((t) => tabUrlLooksLikeAutodartsStatistics(t.url));
+          let statTabs = tabs.filter((t) => tabUrlLooksLikeAutodartsStatistics(tabEffectiveUrl(t)));
+          if (!statTabs.length) {
+            statTabs = tabs.filter((t) => tabLooksLikeStatisticsByTitle(t));
+          }
           if (!statTabs.length) {
             resolve(null);
             return;
@@ -510,8 +544,8 @@
             const fe = chrome.runtime?.lastError;
             const fTab = !fe && Array.isArray(focused) ? focused[0] : null;
             const fid = fTab?.id;
-            const fav = fTab?.url || "";
-            if (Number.isInteger(fid) && tabUrlLooksLikeAutodartsStatistics(fav)) {
+            const fav = tabEffectiveUrl(fTab);
+            if (Number.isInteger(fid) && statTabs.some((x) => x.id === fid)) {
               const exact = statTabs.find((x) => x.id === fid);
               if (exact) {
                 resolve(exact.id);
@@ -805,7 +839,13 @@
           }
 
           if (msg?.type === "START_GOOGLE_AUTH") {
-            const result = await startGoogleAuthFlow(msg?.baseUrl || settings.websiteApiUrl);
+            const result = await startWebsiteOAuthFlow(msg?.baseUrl || settings.websiteApiUrl, "google");
+            sendResponse({ ok: true, ...result, settings: ADM.getSettings() });
+            return;
+          }
+
+          if (msg?.type === "START_DISCORD_AUTH") {
+            const result = await startWebsiteOAuthFlow(msg?.baseUrl || settings.websiteApiUrl, "discord");
             sendResponse({ ok: true, ...result, settings: ADM.getSettings() });
             return;
           }

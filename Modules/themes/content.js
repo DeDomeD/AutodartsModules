@@ -1250,7 +1250,13 @@ function buildThemeCss(cfg) {
   `;
 
   const themeCfg = findTheme(cfg.layout, cfg.theme);
-  const stylebotImportFidelity = !!(themeCfg && themeCfg.stylebotImport);
+  const themeIdForFidelity = String(themeCfg?.id || cfg.theme || "").toLowerCase();
+  const stylebotImportFidelity = !!(
+    themeCfg &&
+    (themeCfg.stylebotImport ||
+      themeIdForFidelity === "mrjames-ad-template" ||
+      themeIdForFidelity.startsWith("mrjames-"))
+  );
   const layoutCss =
     stylebotImportFidelity ? "" : cfg.layout === "vertical" ? verticalLayout : horizontalLayout;
   const themeIdLower = String(cfg.theme || "").toLowerCase();

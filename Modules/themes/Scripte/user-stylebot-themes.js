@@ -1,4 +1,4 @@
-(function initWebsiteUserStylebotThemes(scope) {
+﻿(function initWebsiteUserStylebotThemes(scope) {
   scope.AD_SB_WEBSITE_USER_STYLEBOT_THEMES = [
     {
       id: "user-scolia-pro",

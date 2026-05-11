@@ -174,6 +174,36 @@
     return runtimeState.domPlayerDisplayByIndex[idx];
   }
 
+  /**
+   * Rest für Custom-Checkout: zuerst Payload (`remainingScore`), sonst `playerScores[aktiv]`,
+   * DOM-Streifen (`remaining`) oder letzter `dom_play_snapshot` — sonst `NaN`.
+   */
+  function resolveRemainingScoreForDomCheckout(s) {
+    const remRaw = s?.remainingScore;
+    if (remRaw != null && remRaw !== "" && Number.isFinite(Number(remRaw))) {
+      const v = Math.trunc(Number(remRaw));
+      if (v > 0 && v <= 1002) return v;
+    }
+    const dai =
+      asValidPlayerIndex(s?.domActivePlayerIndex) ?? asValidPlayerIndex(runtimeState.domLiveActivePlayerIndex);
+    const scores = Array.isArray(s?.playerScores) ? s.playerScores : null;
+    if (dai != null && scores && dai >= 0 && dai < scores.length) {
+      const n = Number(scores[dai]);
+      if (Number.isFinite(n) && n > 0 && n <= 1002) return Math.trunc(n);
+    }
+    const strip = dai != null ? domPlayerStripAtIndex(dai) : null;
+    if (strip != null && strip.remaining != null && Number.isFinite(Number(strip.remaining))) {
+      const n = Math.trunc(Number(strip.remaining));
+      if (n > 0 && n <= 1002) return n;
+    }
+    const obs = getLastDomPlaySnapshotIfMatch();
+    if (dai != null && obs && Array.isArray(obs.players) && obs.players[dai] != null) {
+      const n = Number(obs.players[dai].scoreRemaining);
+      if (Number.isFinite(n) && n > 0 && n <= 1002) return Math.trunc(n);
+    }
+    return NaN;
+  }
+
   /** Abstand/Treffer aus Snapshot + optional gleicher Strip (Cork-Zeile in der Konsole). */
   function pickBullOffProximityFromSnapshotAndStrip(obsSnap, pi, stripHint) {
     if (!Number.isInteger(pi) || pi < 0) return null;
@@ -1070,11 +1100,17 @@
       matchFormatSummary: fmtLine
     });
     try {
+      const merged = mergeLastStateWithDomSnapshot(lastState);
+      const playerScoresForEmit =
+        Array.isArray(merged?.playerScores) && merged.playerScores.length >= 2
+          ? merged.playerScores.map((x) => (Number.isFinite(Number(x)) ? Math.trunc(Number(x)) : null))
+          : null;
       ADM.admTriggerBus?.emit?.("x01_game_start", {
         effect: "x01_game_start",
         matchFormatSummary: fmtLine,
         matchId: matchIdForFp ?? null,
-        playerNames: list.slice()
+        playerNames: list.slice(),
+        ...(playerScoresForEmit ? { playerScores: playerScoresForEmit } : {})
       });
     } catch (_) {}
     return true;
@@ -2266,8 +2302,32 @@
         }
       }
       if (topCork != null && Number.isFinite(topCork)) throwerRemainingScore = topCork;
-    } else if (domStrip != null && Number.isFinite(Number(domStrip.remaining))) {
-      throwerRemainingScore = Number(domStrip.remaining);
+    } else {
+      /**
+       * Rest **nach** dem Wurf fuer Matrix/Logs: aus Rest vorher und Dart-Punkten — DOM kann beim
+       * Service-Worker-Event noch den alten Wert zeigen (daher nicht mehr bevorzugt, wenn „vorher“ bekannt).
+       */
+      const dartPtsRaw = visitSkipped ? NaN : Number(visitMeta?.score);
+      const dartPts = Number.isFinite(dartPtsRaw)
+        ? dartPtsRaw
+        : visitSkipped
+          ? NaN
+          : Number(t?.score);
+      if (
+        !visitSkipped &&
+        Number.isFinite(throwerRemainingBeforeDart) &&
+        Number.isFinite(dartPts) &&
+        dartPts >= 0
+      ) {
+        const b = Math.trunc(throwerRemainingBeforeDart);
+        const d = Math.trunc(dartPts);
+        if (d === 0) throwerRemainingScore = b;
+        else if (b > d) throwerRemainingScore = b - d;
+        else if (b === d) throwerRemainingScore = 0;
+        else throwerRemainingScore = b;
+      } else if (domStrip != null && Number.isFinite(Number(domStrip.remaining))) {
+        throwerRemainingScore = Number(domStrip.remaining);
+      }
     }
     const throwerAverageDisplay =
       stripForAvg != null && stripForAvg.average != null && String(stripForAvg.average).trim()
@@ -2791,9 +2851,18 @@
       const ntRaw = s?.checkoutNextThrow;
       const nextThrow =
         ntRaw != null && ntRaw !== "" && Number.isFinite(Number(ntRaw)) ? Math.trunc(Number(ntRaw)) : NaN;
-      const rem = Number(s?.remainingScore);
+      const rem = resolveRemainingScoreForDomCheckout(s);
       const th = checkoutThresholdFromSettings();
-      if (!segRaw || nextThrow < 1 || nextThrow > 3 || !Number.isFinite(rem) || rem <= 0 || rem > th) {
+      /** `Number(null) === 0` würde fälschlich abbrechen — Rest nur bei echtem DOM-Wert. */
+      const customBypassThreshold = ADM.obsZoom?.hasCustomCheckoutRuleForRemaining?.(rem) === true;
+      if (
+        !segRaw ||
+        nextThrow < 1 ||
+        nextThrow > 3 ||
+        !Number.isFinite(rem) ||
+        rem <= 0 ||
+        (!customBypassThreshold && rem > th)
+      ) {
         return;
       }
       const visitSum = Number(s?.turnVisitSum);
@@ -3358,6 +3427,8 @@
   const handlers = {
     getSnapshot,
     getState: () => cloneValue(runtimeState.lastState),
+    /** WLED-Matrix u. a.: aktuelle Punkte wie auf dem Board (WS + DOM-Snapshot). */
+    getMergedStateForMatrix: () => mergeLastStateWithDomSnapshot(lastState),
     getLastThrow: () => cloneValue(runtimeState.lastThrow),
     getLastGameEvent: () => cloneValue(runtimeState.lastGameEvent),
     getLastUiEvent: () => cloneValue(runtimeState.lastUiEvent),

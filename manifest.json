@@ -1,7 +1,7 @@
 {
     "manifest_version":  3,
     "name":  "Autodart Modules",
-    "version":  "0.1.633",
+    "version":  "0.1.655",
     "icons":  {
                   "16":  "Main/assets/ICON.png",
                   "32":  "Main/assets/ICON.png",
@@ -40,12 +40,12 @@
                                            "Main/bridge/content.js",
                                            "Main/i18n.js",
                                            "Modules/lobbyfilter/content.js",
-                                           "Modules/themes/Horizontal/config.js",
-                                           "Modules/themes/Horizontal/mrjames-ad-template.js",
-                                           "Modules/themes/Vertical/config.js",
-                                           "Modules/themes/Horizontal/library.js",
-                                           "Modules/themes/Vertical/library.js",
-                                           "Modules/themes/community-designs.js",
+                                           "Modules/themes/Scripte/theme-presets-horizontal.js",
+                                           "Modules/themes/Scripte/mrjames-ad-template.js",
+                                           "Modules/themes/Scripte/theme-presets-vertical.js",
+                                           "Modules/themes/Scripte/theme-library-horizontal.js",
+                                           "Modules/themes/Scripte/theme-library-vertical.js",
+                                           "Modules/themes/Scripte/community-designs.js",
                                            "Modules/themes/config.js",
                                            "Modules/themes/content.js"
                                        ],

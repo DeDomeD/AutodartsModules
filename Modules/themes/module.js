@@ -11,7 +11,7 @@
   const ADM_MRJAMES_GALLERY_ORIGINAL_REFERENCE_URL =
     "https://chromewebstore.google.com/detail/stylebot/oiaejidbmkiecgbjeifoejpgmdaleoha";
 
-  /** Snapshot aus `tobyleif-stylebot-catalog.js` (bevor ein Remote-Katalog `ADM_TOBYLEIF_STYLEBOT_CATALOG` überschreibt). */
+  /** Snapshot aus `Scripte/tobyleif-stylebot-catalog.js` (bevor ein Remote-Katalog `ADM_TOBYLEIF_STYLEBOT_CATALOG` überschreibt). */
   const ADM_TOBYLEIF_EMBEDDED_CATALOG_SNAPSHOT = (() => {
     const c = globalThis.ADM_TOBYLEIF_STYLEBOT_CATALOG;
     return Array.isArray(c) ? c.map((r) => ({ ...r })) : [];

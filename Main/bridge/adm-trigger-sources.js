@@ -173,7 +173,16 @@
     const now = Date.now();
     if (now - lastGameOnWsAt < 2000) return;
     lastGameOnWsAt = now;
-    emit("gameon", { ...e, effect: "gameon_ws_event" });
+    const lastMerged = ctx?.getLastState?.() ?? null;
+    const playerScoresForEmit =
+      Array.isArray(lastMerged?.playerScores) && lastMerged.playerScores.length >= 2
+        ? lastMerged.playerScores.map((x) => (Number.isFinite(Number(x)) ? Math.trunc(Number(x)) : null))
+        : null;
+    emit("gameon", {
+      ...e,
+      effect: "gameon_ws_event",
+      ...(playerScoresForEmit ? { playerScores: playerScoresForEmit } : {})
+    });
   }
 
   function handleThrow(t, ctx) {

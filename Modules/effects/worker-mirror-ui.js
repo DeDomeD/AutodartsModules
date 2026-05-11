@@ -221,8 +221,7 @@
       }
 
       /**
-       * Konsolenzeilen tragen optional `#123` vor `[ADM]` / `[WLED]` — Minimal-Filter
-       * muss danach prüfen, sonst verschwinden WLED-Kontextzeilen komplett.
+       * Konsolenzeilen tragen optional `#123` vor `[ADM]` — Minimal-Filter muss danach prüfen.
        */
       function wledPlainAfterOptionalSerial(plainLower) {
         return String(plainLower || "")
@@ -233,16 +232,25 @@
       }
 
       /**
-       * WLED Stufe 1 (ein Punkt): nur die gelbe [ADM]-Kurzzeile (printAdmWledEffectLine).
-       * Graue [WLED]-Tag-Zeilen inkl. JSON — erst Stufe 2 (zwei Punkte).
+       * WLED Stufe 0 (ein Punkt): nur gelbe `[ADM]`-Kurzzeilen (Preset mit Pipes, Matrix „Name = Rest“)
+       * sowie die grüne/roten Statuszeile „WLED Controller Connected/Disconnected“ (ohne Badge).
+       * Alle `[WLED]`-Loggerzeilen (matrix POST, Preset-JSON, …) nur in Stufe 1 (zwei Punkte).
        */
       function wledMinimalOk(plainLower) {
         const p = wledPlainAfterOptionalSerial(plainLower);
-        if (/^\[adm\]/.test(p)) {
-          if (/^\[adm\]\s*matrix\s+\d+\s*=/i.test(p)) return true;
-          const afterBadge = p.replace(/^\[adm\]\s*/i, "");
-          const pipeCount = (afterBadge.match(/\|/g) || []).length;
-          if (pipeCount >= 2) return true;
+        if (/^wled controller\s+(connected|disconnected)\b/.test(p)) return true;
+        if (!/^\[adm\]/.test(p)) return false;
+        if (/^\[adm\]\s*matrix\s+\d+\s*=/.test(p)) return true;
+        const afterBadge = p.replace(/^\[adm\]\s*/, "").trim();
+        const pipeCount = (afterBadge.match(/\|/g) || []).length;
+        if (pipeCount >= 2) return true;
+        /** Matrix-Spiegel: `[ADM] Segment-Name = 501` (keine Pipes; frueher nur `matrix 1 = …`). */
+        if (
+          pipeCount < 2 &&
+          /\s=\s/.test(afterBadge) &&
+          /=\s*[\d?—-]+$/.test(afterBadge.replace(/\s+$/g, ""))
+        ) {
+          return true;
         }
         return false;
       }
@@ -289,10 +297,45 @@
         return out;
       }
 
+      function scrollMirrorViewportToBottom() {
+        const vp = doc.getElementById("workerMirrorLogViewport");
+        if (!vp) return;
+        const snap = () => {
+          vp.scrollTop = vp.scrollHeight;
+          const last = vp.lastElementChild;
+          if (last && typeof last.scrollIntoView === "function") {
+            try {
+              last.scrollIntoView({ block: "end", inline: "nearest" });
+            } catch {
+              try {
+                last.scrollIntoView(false);
+              } catch {
+                // ignore
+              }
+            }
+          }
+        };
+        snap();
+        try {
+          requestAnimationFrame(() => {
+            snap();
+            requestAnimationFrame(snap);
+          });
+        } catch {
+          try {
+            requestAnimationFrame(snap);
+          } catch {
+            // ignore
+          }
+        }
+        setTimeout(snap, 0);
+        setTimeout(snap, 40);
+        setTimeout(snap, 120);
+      }
+
       function refreshMirrorViewport() {
         const vp = doc.getElementById("workerMirrorLogViewport");
         if (!vp) return;
-        const nearBottom = vp.scrollHeight - vp.scrollTop - vp.clientHeight < 80;
         vp.innerHTML = "";
         const visible = getMirrorVisibleEntries();
         for (let i = 0; i < visible.length; i += 1) {
@@ -314,9 +357,7 @@
           }
           vp.appendChild(row);
         }
-        if (nearBottom || mirrorState.lines.length < 2) {
-          vp.scrollTop = vp.scrollHeight;
-        }
+        scrollMirrorViewportToBottom();
       }
 
       function downloadWorkerMirrorTxt() {
@@ -641,6 +682,10 @@
       if (mode === "overlay" && !doc.body.dataset.admWorkerMirrorEyeDelegate) {
         doc.body.dataset.admWorkerMirrorEyeDelegate = "1";
         doc.body.addEventListener("click", (ev) => {
+          if (ev.target.closest("#btnOpenWorkerMirrorWindow")) {
+            openOrFocusMirrorPopout();
+            return;
+          }
           if (!ev.target.closest("#btnOpenServiceWorker")) return;
           const shell = getWorkerMirrorShell();
           if (shell?.classList.contains("isOpen")) closeWorkerMirrorOverlay();
@@ -652,7 +697,8 @@
         applyWorkerMirrorTiersToDom,
         openWorkerMirrorOverlay,
         closeWorkerMirrorOverlay,
-        getWorkerMirrorShell
+        getWorkerMirrorShell,
+        openMirrorLogPopoutWindow: openOrFocusMirrorPopout
       };
     }
   };

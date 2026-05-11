@@ -770,18 +770,21 @@
       }
     },
     /**
-     * WLED-Matrix Punktzahl: `[ADM] Matrix 1 = 501` — gleiche gelbe Badge-Optik wie Preset-Zeile.
-     * @param {{ matrixNo: number, score: string }} opts — matrixNo 1-basiert (Spieler-Matrix 1 / 2)
+     * WLED-Matrix Punktzahl: `[ADM] Matrix L = 501` — Titel aus `segmentLabel` (Settings), sonst `Segment <id>`.
+     * @param {{ segmentLabel?: string, score: string, matrixNo?: number }} opts — `matrixNo` nur Legacy-Fallback
      */
     printAdmWledMatrixLine(opts) {
       try {
         const o = opts && typeof opts === "object" ? opts : {};
         const san = ADM.triggerWorkerLog.sanitizeConsoleFormatArg;
-        const n = Math.trunc(Number(o.matrixNo));
-        const label = Number.isFinite(n) && n > 0 ? String(n) : "?";
+        const fromSeg = san(String(o.segmentLabel || "").trim());
+        const legacyN = Math.trunc(Number(o.matrixNo));
+        const label =
+          fromSeg ||
+          (Number.isFinite(legacyN) && legacyN > 0 ? san(`Matrix ${legacyN}`) : san("?"));
         const score = san(String(o.score != null ? o.score : "").trim() || "—");
         workerConsoleLog(
-          `%c[ADM]%c Matrix %s = %s`,
+          `%c[ADM]%c %s = %s`,
           STYLE_ADM_WLED_BADGE,
           STYLE_ADM_WLED_TEXT,
           label,

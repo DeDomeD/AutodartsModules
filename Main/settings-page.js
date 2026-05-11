@@ -9,16 +9,28 @@
 
         <div class="sectionHead" style="margin-top:0;">
           <div class="sectionTitle" data-i18n="section_debug">Debug</div>
-          <button
-            type="button"
-            id="btnOpenServiceWorker"
-            class="btnMini"
-            style="font-size:15px;line-height:1;padding:4px 9px;"
-            data-i18n-title="debug_open_worker_title"
-            data-i18n-aria-label="debug_open_worker_title"
-            title=""
-            aria-label=""
-          >👁</button>
+          <div class="debugLogOpenBtns" style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+            <button
+              type="button"
+              id="btnOpenServiceWorker"
+              class="btnMini"
+              style="font-size:15px;line-height:1;padding:4px 9px;"
+              data-i18n-title="debug_open_worker_title"
+              data-i18n-aria-label="debug_open_worker_title"
+              title=""
+              aria-label=""
+            >👁</button>
+            <button
+              type="button"
+              id="btnOpenWorkerMirrorWindow"
+              class="btnMini"
+              style="font-size:15px;line-height:1;padding:4px 9px;"
+              data-i18n-title="debug_open_worker_mirror_window_title"
+              data-i18n-aria-label="debug_open_worker_mirror_window_title"
+              title=""
+              aria-label=""
+            >🪟</button>
+          </div>
         </div>
 
         <div class="sectionTitle" style="margin-top:14px;" data-i18n="section_general">General</div>

@@ -22,7 +22,9 @@ const MODULE_ORDER = [
   "macros",
   "lobbyfilter",
   "stats",
+  "rangliste",
   "themes",
+  "profile",
   "community",
   "liga",
   "games"
@@ -32,7 +34,7 @@ const MODULE_NAV_READY = {};
 /** Nav-Icons: noch in Arbeit (leicht rötlich). */
 const MODULE_NAV_WIP = new Set(["overlay", "caller", "playercam", "macros", "liga", "games"]);
 /** Nav-Icons: Beta (gelblich). */
-const MODULE_NAV_BETA = new Set(["effects", "wled", "stats", "themes"]);
+const MODULE_NAV_BETA = new Set(["effects", "wled", "stats", "rangliste", "themes"]);
 const WEBSITE_ICON_COLOR = "assets/ICON.png";
 const WEBSITE_ICON_GRAY = "assets/ICON_grau.png";
 const LAST_PAGE_STORAGE_KEY = "adm_last_popup_page";
@@ -710,12 +712,22 @@ function decorateModulePage(page, module, enabled) {
   syncModulePageState(page, enabled);
 }
 
+async function reloadPopupSettingsFromStorage() {
+  const r = await send({ type: "GET_SETTINGS" });
+  if (r?.ok && r.settings && typeof r.settings === "object") {
+    SETTINGS = r.settings;
+    syncActiveModules(SETTINGS);
+  }
+  return SETTINGS;
+}
+
 function apiFor(root) {
   return {
     root,
     t,
     send,
     getSettings: () => SETTINGS,
+    reloadSettingsFromStorage: reloadPopupSettingsFromStorage,
     savePartial,
     bindAuto,
     bindAutoImmediate,
@@ -766,7 +778,9 @@ function navIconSvg(id, fallback = "*") {
     obszoom: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4M11 8v6M8 11h6"/></svg>`,
     macros: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><line x1="14" y1="2" x2="14" y2="6"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="16" y1="18" x2="16" y2="22"/></svg>`,
     stats: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><rect x="6" y="11" width="2.8" height="7" rx="1"/><rect x="10.6" y="8" width="2.8" height="10" rx="1"/><rect x="15.2" y="5" width="2.8" height="13" rx="1"/></svg>`,
+    rangliste: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20h14"/><path d="M8 16V9"/><path d="M12 16V5"/><path d="M16 16v-4"/><path d="M7 9h2M11 5h2M15 12h2"/><path d="M9 20h6"/></svg>`,
     themes: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 16 8-8 4 4-8 8H4v-4Z"/><path d="m14 6 2-2 4 4-2 2"/></svg>`,
+    profile: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20.5c.6-3.2 3.4-5.5 7-5.5s6.4 2.3 7 5.5"/></svg>`,
     community: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="8" r="2.5"/><path d="M3.5 18a4.5 4.5 0 0 1 9 0"/><path d="M13 18a3.5 3.5 0 0 1 7 0"/></svg>`,
     liga: `<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 5h10v4a5 5 0 0 1-10 0V5Z"/><path d="M9 19h6M12 14v5"/><path d="M5 5h2M17 5h2"/></svg>`,
     games: `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.58 16.09l-1.09-7.66A3.996 3.996 0 0 0 16.53 5H7.47C5.48 5 3.79 6.46 3.51 8.43l-1.09 7.66C2.2 17.63 3.39 19 4.94 19c.68 0 1.32-.27 1.8-.75L9 16h6l2.26 2.25c.48.48 1.13.75 1.8.75 1.56 0 2.75-1.37 2.52-2.91zM7 15v-2H5v2H3v-2H1v2h2v2h2v-2h2zm11.41-1.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM14 9c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2z"/></svg>`
@@ -873,13 +887,14 @@ function buildModuleLayout(settings, preferredPage = "") {
     btn.classList.toggle("disabled", !installedSet.has(module.id));
     if (MODULE_NAV_WIP.has(module.id)) btn.classList.add("navItemWip");
     else if (MODULE_NAV_BETA.has(module.id)) btn.classList.add("navItemBeta");
-    else if (module.id === "obszoom" || module.id === "lobbyfilter") btn.classList.add("navItemStable");
+    else if (module.id === "obszoom" || module.id === "lobbyfilter" || module.id === "profile")
+      btn.classList.add("navItemStable");
     const readyKey = MODULE_NAV_READY[module.id];
     if (readyKey) {
       btn.classList.add("navItemReady");
       btn.dataset.i18nTitle = readyKey;
     }
-    if (module.id === "community") navBottom.appendChild(btn);
+    if (module.id === "profile" || module.id === "community") navBottom.appendChild(btn);
     else navMiddle.appendChild(btn);
 
     module.bind?.(apiFor(page));

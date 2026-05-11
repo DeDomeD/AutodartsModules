@@ -1843,7 +1843,16 @@
     if (fmt && /bull[-\s]?off/i.test(String(fmt.gameVariant || "").toLowerCase())) return;
     const pack = collectCheckoutGuideSnapshotFromAdExtTurn();
     if (!pack) return;
-    const remainingScore = getActiveColumnRemainingScoreForCheckoutGuide();
+    let remainingScore = getActiveColumnRemainingScoreForCheckoutGuide();
+    /** Gleiche Quelle wie Checkout-Vorschlag: aktive Spalte — Fallback über Streifen, wenn Score-Box nicht parsebar. */
+    if (remainingScore == null || !Number.isFinite(remainingScore) || remainingScore <= 0) {
+      const ai = getDomActivePlayerColumnIndex();
+      const strips = collectPlayerDisplayStripsFromDom();
+      if (ai != null && Array.isArray(strips) && strips[ai] && strips[ai].remaining != null) {
+        const n = Number(strips[ai].remaining);
+        if (Number.isFinite(n) && n > 0 && n <= 1002) remainingScore = Math.trunc(n);
+      }
+    }
     emitObservedState(
       "dom_checkout",
       {

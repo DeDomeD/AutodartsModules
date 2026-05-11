@@ -338,7 +338,7 @@ background: linear-gradient(
   color: var(--color-text) !important;
 }
 
-#menu-list-\:rhj\:\hover {
+#menu-list-\:rhj\: .chakra-menu__menuitem:hover {
   background: rgba(255, 107, 107, 0.15) !important;
 }
 /* Spielername im Extended Player Display: immer wei§, ohne Glow */
@@ -400,7 +400,7 @@ div.chakra-stack.css-37hv00 {
 
 /* Hover-Effekt */
 [id^="menu-list-"] .chakra-menu__menuitem:hover {
-  background: rgba(255, 255, 1255, 0.15) !important;
+  background: rgba(255, 255, 255, 0.15) !important;
   color: var(--color-text) !important;
 }
 /* Entfernt die Rahmen der einzelnen MenŸ-Items */
@@ -538,7 +538,8 @@ html, body, #root {
   background-position: center !important;
 }
 
-.fireworks.css-1cjvbe6 {
+/* Nur Basisklasse „fireworks“ — der zweite Hash (z. B. css-1cjvbe6) wechselt mit Chakra-Builds. */
+.fireworks {
   position: fixed;
   top: -10vw;
   width: 100vw;
@@ -559,7 +560,7 @@ html, body, #root {
   100% { transform: translate(0,0); }
 }
 
-body:has(.fireworks.css-1cjvbe6) {
+body:has(.fireworks) {
   animation: impactShake 0.4s linear infinite !important;
 }
 
@@ -581,7 +582,7 @@ div.suggestion.css-1dkgpmk::before {
     top: -10px;
     left: 10px;
     background-color: rgba(0, 0, 0, 0.4);
-    color: rgba#1a1a1a;
+    color: #1a1a1a;
     font-family: "Arial Black", sans-serif;
     font-size: 15px;
     font-weight: 900;
@@ -594,14 +595,7 @@ div.suggestion.css-1dkgpmk::before {
     border: 1px solid rgba(0,0,0,0.1);
 }
 
-/* Registration Animation */
-@property --angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
-
-/* Registration Animation */
+/* Registration Animation — @property für animiertes conic-gradient (--angle) */
 @property --angle {
   syntax: "<angle>";
   initial-value: 0deg;
@@ -650,6 +644,10 @@ div.suggestion.css-1dkgpmk::before {
   to {
     --angle: 360deg;
   }
+}
+
+:root:not(:has(.css-rc3vw3)) .css-hjw8x4 {
+  --border-width: 5px;
 }
 
 :root:not(:has(.css-rc3vw3)) .css-hjw8x4::before {
@@ -760,7 +758,7 @@ div.suggestion.css-1dkgpmk::before {
   100% { transform: rotate(1440deg) scale(1); }
 }
 
-/* Glow */
+/* Rechteckiges box-shadow am großen Wrapper wirkt „versetzt“ — am SVG folgt drop-shadow der Scheibe. */
 @keyframes rainbowFlash {
   0% {
     box-shadow: 0 0 35px 10px red;
@@ -797,29 +795,52 @@ div.suggestion.css-1dkgpmk::before {
   }
 }
 
-/* 180 / Fireworks: nur echte Dartscheibe im Match-Panel — nicht jedes .css-79elbk (Caller/Name-Banner nutzen denselben Hash). */
-body:has(.fireworks.css-1cjvbe6) .css-tkevr6 .css-79elbk:where(:has(svg[viewBox="0 0 1000 1000"]), :has(> canvas)) {
-  transform-origin: center center;
-  animation: insaneSpin 2.2s linear infinite,
-             rainbowFlash 2.2s linear infinite;
+@keyframes dartboard180GlowFilter {
+  0% {
+    filter: drop-shadow(0 0 14px rgba(255, 0, 0, 0.85)) drop-shadow(0 0 28px rgba(255, 0, 0, 0.35));
+  }
+  16% {
+    filter: drop-shadow(0 0 14px rgba(255, 105, 180, 0.9)) drop-shadow(0 0 28px rgba(255, 105, 180, 0.38));
+  }
+  33% {
+    filter: drop-shadow(0 0 14px rgba(255, 200, 0, 0.9)) drop-shadow(0 0 28px rgba(255, 200, 0, 0.38));
+  }
+  50% {
+    filter: drop-shadow(0 0 14px rgba(50, 255, 50, 0.9)) drop-shadow(0 0 28px rgba(50, 255, 50, 0.38));
+  }
+  66% {
+    filter: drop-shadow(0 0 14px rgba(0, 230, 255, 0.9)) drop-shadow(0 0 28px rgba(0, 230, 255, 0.38));
+  }
+  83% {
+    filter: drop-shadow(0 0 14px rgba(80, 120, 255, 0.9)) drop-shadow(0 0 28px rgba(80, 120, 255, 0.38));
+  }
+  100% {
+    filter: drop-shadow(0 0 14px rgba(255, 0, 200, 0.85)) drop-shadow(0 0 28px rgba(255, 0, 200, 0.35));
+  }
 }
 
-body:has(.fireworks.css-1cjvbe6) .css-tkevr6 .css-79elbk:where(:has(svg[viewBox="0 0 1000 1000"]), :has(> canvas)) {
-  border-radius: 50%;
-  overflow: hidden;
-  outline: 2px solid rgba(255, 255, 255, 0.4);
-  outline-offset: 3px;
+/*
+ * 180 / Fireworks: nur SVG oder Canvas drehen — nicht den Parent-Wrapper (sonst doppelte transform + falscher Glow).
+ * Kein overflow:hidden am SVG (Zahlenring / Segmente können sonst abgeschnitten wirken).
+ */
+/*
+ * Scheibe im Match-Panel. Achtung: `.fireworks` haengt oft UNTER `.css-tkevr6` — ohne :not()
+ * wuerden Overlay-SVG/Canvas dieselbe Animation bekommen.
+ */
+body:has(.fireworks) .css-tkevr6 svg:not(.fireworks *):where([viewBox="0 0 1000 1000"], [viewBox="0 0 512 512"]),
+body:has(.fireworks) .css-tkevr6 canvas:not(.fireworks *) {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  display: block;
+  animation: insaneSpin 2.2s linear infinite,
+             dartboard180GlowFilter 2.2s linear infinite;
 }
 
-/* Scheibe ggf. auch im Fireworks-Overlay (zentrierte Kopie), falls außerhalb .css-tkevr6 */
-body:has(.fireworks.css-1cjvbe6) .fireworks.css-1cjvbe6 .css-79elbk:where(:has(svg[viewBox="0 0 1000 1000"]), :has(> canvas)) {
-  transform-origin: center center;
-  animation: insaneSpin 2.2s linear infinite,
-             rainbowFlash 2.2s linear infinite;
-  border-radius: 50%;
-  overflow: hidden;
-  outline: 2px solid rgba(255, 255, 255, 0.4);
-  outline-offset: 3px;
+/* Sicherheits-Reset: alles im Fireworks-Layer darf nicht von der 180-Scheiben-Animation erfasst werden. */
+body:has(.fireworks) .fireworks svg,
+body:has(.fireworks) .fireworks canvas {
+  animation: none !important;
+  filter: none !important;
 }
 
 /* === Player Boxes / Style === */
@@ -832,7 +853,6 @@ body:has(.fireworks.css-1cjvbe6) .fireworks.css-1cjvbe6 .css-79elbk:where(:has(s
   width: var(--player-width);
   height: calc((100% - 180px) / 3);
   min-height: 130px;
-  //padding: 0.75rem 0.8rem;
   transition: all 0.3s ease;
   }
 
@@ -1101,7 +1121,7 @@ img.chakra-image.css-6t0bzd {
 
 /* Player Score (501) */
 :root:not(:has(.css-rc3vw3 ,.css-da85l7)) .css-y3hfdd {
-  display: absolute !important;
+  display: flex !important;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;

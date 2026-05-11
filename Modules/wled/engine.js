@@ -427,13 +427,31 @@
     return { w, h };
   }
 
+  function wledMatrixParseDisplayOrientationToken(raw) {
+    let o = String(raw?.orientation ?? "").trim().toLowerCase().replace(/-/g, "_");
+    if (!o && String(raw?.scanMode || "").toLowerCase() === "cols") o = "vertical";
+    if (!o && String(raw?.scanMode || "").toLowerCase() === "rows") o = "horizontal";
+    if (!o) o = "horizontal";
+    if (o === "rows") o = "horizontal";
+    if (o === "cols") o = "vertical";
+    const mirrorX = o.includes("mirror") || raw?.mirrorX === true;
+    const vertical = o.startsWith("vertical");
+    const scanMode = vertical ? "cols" : "rows";
+    let orientation = vertical ? "vertical" : "horizontal";
+    if (vertical && mirrorX) orientation = "vertical_mirror";
+    else if (vertical) orientation = "vertical";
+    else if (mirrorX) orientation = "horizontal_mirror";
+    else orientation = "horizontal";
+    return { orientation, scanMode, mirrorX };
+  }
+
   function wledMatrixNormalizeDisplayEntry(raw, ctrls) {
     const cid = String(raw?.controllerId || "").trim() || String(ctrls[0]?.id || "").trim();
     const wh = wledMatrixClampWh(raw?.w, raw?.h);
     const serpentine = raw?.serpentine === true;
-    const orient = String(raw?.orientation || "horizontal").toLowerCase() === "vertical" ? "vertical" : "horizontal";
-    const scanMode = orient === "vertical" ? "cols" : "rows";
+    const po = wledMatrixParseDisplayOrientationToken(raw);
     const segmentId = Math.max(0, Math.min(31, Math.trunc(Number(raw?.segmentId) || 0)));
+    const segmentLabel = String(raw?.segmentLabel || raw?.segmentName || raw?.label || "").trim();
     const id =
       String(raw?.id || "").trim() ||
       `m_${Date.now()}_${Math.floor(Math.random() * 99999)}`;
@@ -441,11 +459,13 @@
       id,
       controllerId: cid,
       segmentId,
+      segmentLabel,
       w: wh.w,
       h: wh.h,
       serpentine,
-      orientation: orient,
-      scanMode
+      orientation: po.orientation,
+      scanMode: po.scanMode,
+      mirrorX: po.mirrorX
     };
   }
 
@@ -465,7 +485,8 @@
           w: wh.w,
           h: wh.h,
           serpentine: settings.wledMatrixWledSerpentine === true,
-          orientation: orient
+          orientation: orient,
+          mirrorX: settings?.wledMatrixWledMirrorX === true
         },
         ctrls
       )
@@ -496,12 +517,22 @@
     const d = displays[pi] || displays[0];
     return {
       segId: d.segmentId,
+      segmentLabel: String(d.segmentLabel || "").trim(),
       w: d.w,
       h: d.h,
       serpentine: d.serpentine,
       scanMode: d.scanMode,
+      mirrorX: d.mirrorX === true,
       controllerId: String(d.controllerId || "").trim()
     };
+  }
+
+  /** Kurzname fuer Worker-Log: optional `segmentLabel` in Matrix-JSON, sonst WLED-Platzhalter. */
+  function wledMatrixLogSegmentTitle(settings, playerIndex0) {
+    const { segmentLabel, segId } = wledMatrixGetDisplayLayout(settings, playerIndex0);
+    if (segmentLabel) return segmentLabel;
+    const sid = Math.max(0, Math.min(31, Math.trunc(Number(segId) || 0)));
+    return `Segment ${sid}`;
   }
 
   function wledMatrixGetControllerIdForPlayer(settings, playerIndex0) {
@@ -553,6 +584,15 @@
     return y * w + x;
   }
 
+  /** LED-Index aus Layout inkl. optional X-Spiegelung (Leserichtung / Rueckseite der Matrix). */
+  function wledMatrixToLinearIndex(layout, x, y) {
+    const w = Math.trunc(Number(layout?.w)) || 0;
+    const h = Math.trunc(Number(layout?.h)) || 0;
+    if (w < 1 || h < 1) return -1;
+    const xi = layout?.mirrorX === true ? w - 1 - x : x;
+    return wledMatrixXYToLinearIndex(xi, y, w, h, !!layout?.serpentine, wledMatrixNormalizeScanMode(layout?.scanMode));
+  }
+
   function wledMatrixLinearIndexToXY(n, w, h, serpentine, scanMode) {
     const sm = wledMatrixNormalizeScanMode(scanMode);
     const nn = Math.trunc(Number(n));
@@ -573,12 +613,24 @@
   const WLED_MATRIX_SCORE_SLOT_COUNT = 3;
 
   /**
+   * Community-16×16 / Matrix-Text (nur zur Einordnung, keine Laufzeit-Abhaengigkeit):
+   * - [vogler/LED-matrix](https://github.com/vogler/LED-matrix): 5×3-Ziffern in NumPy, Serpentine-Spalten
+   *   `index = x*H + (H-1-y wenn x ungerade)`; Ausgabe per **UDP WARLS** (s. [kno.wled.ge UDP Realtime](https://kno.wled.ge/interfaces/udp-realtime/)), nicht per JSON.
+   * - [2dom/PxMatrix](https://github.com/2dom/PxMatrix): ESP8266/32, viele Font-/Scroll-Beispiele.
+   * - [bombcheck/esp_ws2812matrix_web_text](https://github.com/bombcheck/esp_ws2812matrix_web_text): Web-UI, scrollender Text.
+   * **Diese Extension (WLED-Modus „Einzel-LEDs“):** Punktestand als Bitmap → HTTP POST **`/json/state`** mit `seg[].i`
+   * (RGB-Hex pro Index im Segment). WLED-**Effekte** laufen weiter auf dem Geraet; Presets triggert das Modul separat.
+   * UDP-WARLS waere zusaetzliche Geraete-Konfiguration (Port, Protokoll, Segment aus) — nicht 1:1 mit `seg[].i` mischbar.
+   */
+  /**
    * Block-Ziffern 5×7 (MSB = links), „1“ nur 3 Spalten breit — wie uebliche LED-Matrix-Lesung (z. B. „501“).
    * Jede Zeile `rows[r]` nutzt nur die untersten `w` Bits.
    */
   const WLED_MATRIX_DIGIT57 = {
+    "-": { w: 5, rows: [0, 0, 0, 31, 0, 0, 0] },
     "0": { w: 5, rows: [14, 17, 17, 17, 17, 17, 14] },
     "1": { w: 3, rows: [2, 2, 2, 2, 2, 2, 2] },
+    /* Klassische 5×7-„2“ (volle Breite unten); alternative Formen wirkten mit „6“/„1“ verschmolzen. */
     "2": { w: 5, rows: [31, 1, 31, 16, 31, 0, 0] },
     "3": { w: 5, rows: [31, 1, 7, 1, 31, 1, 31] },
     "4": { w: 5, rows: [17, 17, 31, 1, 1, 0, 0] },
@@ -608,7 +660,7 @@
    * @param {object} [opts] `scoreDigitSlots`: true = Schriftgroesse an drei Stellen ausrichten (Punkte).
    */
   function wledMatrixRasterizeLikePixelIt(displayText, layout, fgHex, opts) {
-    const { w, h, serpentine, scanMode } = layout;
+    const { w, h } = layout;
     const o = opts && typeof opts === "object" ? opts : {};
     const scoreSlots = o.scoreDigitSlots === true;
     const hex = wledMatrixNormalizeHex6(fgHex);
@@ -666,7 +718,7 @@
           /* Hintergrund: schwarz, Alpha 255 — mit AND wuerden alle Pixel „aktiv“ (ganze Matrix weiß). */
           if (a < 12) continue;
           if (lum < 52) continue;
-          const idx = wledMatrixXYToLinearIndex(x, y, w, h, serpentine, scanMode);
+          const idx = wledMatrixToLinearIndex(layout, x, y);
           if (idx >= 0 && idx < w * h) cells.set(idx, hex);
         }
       }
@@ -676,15 +728,51 @@
     }
   }
 
+  /**
+   * Zeichenkette fuer Bitmap-Ziffern: X01-Rest positiv (max. 3 Stellen), Bull-Off-Naehe negativ (z. B. -1, -12).
+   */
+  function wledMatrixScoreCharsForBitmap(scoreText) {
+    const n = Number(scoreText);
+    if (Number.isFinite(n)) {
+      if (n < 0) {
+        const t = String(Math.trunc(n));
+        return t.length > 4 ? t.slice(0, 4) : t;
+      }
+      const t = String(Math.trunc(n));
+      return t.length > 3 ? t.slice(0, 3) : t;
+    }
+    const m = String(scoreText ?? "").trim().match(/^-?\d+/);
+    if (m) {
+      const t = m[0];
+      if (t.startsWith("-")) return t.length > 4 ? t.slice(0, 4) : t;
+      return t.slice(0, 3);
+    }
+    return "0";
+  }
+
   function wledMatrixResolveCellsForScoreText(scoreText, layout, fgHex) {
-    const { w, h } = layout;
-    const raw = String(scoreText ?? "").replace(/[^0-9]/g, "").slice(0, 3) || "0";
+    const raw = wledMatrixScoreCharsForBitmap(scoreText);
+    const narrowW = Math.trunc(Number(layout?.w)) || 0;
+    const narrowH = Math.trunc(Number(layout?.h)) || 0;
+    /** 16×16: 9px hohe Skizzen-Ziffern (Nutzer-Vorlage „261“), Abstand vor schmaler „1“ etwas groesser. */
+    if (narrowW === 16 && narrowH === 16) {
+      const sketchCells = wledMatrixCollectCellsFor9hSketch(raw, layout, fgHex);
+      if (sketchCells && sketchCells.size > 0) return sketchCells;
+    }
+    /**
+     * Auf Breite ≤16 passen drei 5×7-Ziffern nur knapp (oft 1 Spalte Clipping) — dann wirkt „261“/„241“
+     * schnell unleserlich. 3×5 mit drei Slots bleibt in 16px sauber zentriert.
+     */
+    if (narrowW > 0 && narrowW <= 16 && (raw.length >= 3 || (raw.startsWith("-") && raw.length >= 2))) {
+      const cells35 = wledMatrixCollectCellsForDigits(raw, layout, fgHex);
+      if (cells35 && cells35.size > 0) return cells35;
+    }
     const cells57 = wledMatrixCollectCellsForDigits57(raw, layout, fgHex);
     if (cells57 && cells57.size > 0) return cells57;
-    if (!wledMatrixPreferBitmapOverVector(w, h)) {
-      const raster = wledMatrixRasterizeLikePixelIt(raw, layout, fgHex, { scoreDigitSlots: true });
-      if (raster && raster.size > 0) return raster;
-    }
+    /**
+     * Kein Canvas-Vektor fuer Punkte: bei LED-Groessen liefert `fillText` oft 3–5px hohe „Brei“-Blobs
+     * (s. 301 auf schmalen Panels). Nur Bitmap-Ziffern 5×7 (oben) bzw. 3×5-Fallback.
+     */
     return wledMatrixCollectCellsForDigits(raw, layout, fgHex);
   }
 
@@ -697,7 +785,72 @@
     return wledMatrixCollectCellsForArrow(layout, fgHex);
   }
 
+  /**
+   * 9 Zeilen hoch, variable Breite — an Nutzer-Skizze (16×16, „261“) angelehnt.
+   * Zeilen: MSB = links, nur unterste `w` Bits nutzen. Nur fuer exakt 16×16 Layout aktiv.
+   */
+  const WLED_MATRIX_DIGIT9H_SKETCH = {
+    "-": { w: 5, rows: [0, 0, 0, 0, 31, 0, 0, 0, 0] },
+    "0": { w: 4, rows: [15, 9, 9, 9, 9, 9, 9, 9, 15] },
+    "1": { w: 1, rows: [1, 1, 1, 1, 1, 1, 1, 1, 1] },
+    "2": { w: 5, rows: [31, 1, 1, 1, 31, 16, 16, 16, 31] },
+    "3": { w: 4, rows: [15, 9, 9, 1, 15, 1, 9, 9, 15] },
+    "4": { w: 4, rows: [9, 9, 9, 9, 15, 1, 1, 1, 1] },
+    "5": { w: 4, rows: [15, 8, 8, 15, 1, 1, 9, 9, 15] },
+    "6": { w: 4, rows: [15, 8, 8, 8, 15, 9, 9, 9, 15] },
+    "7": { w: 4, rows: [15, 1, 2, 2, 4, 4, 4, 4, 4] },
+    "8": { w: 4, rows: [15, 9, 9, 9, 15, 9, 9, 9, 15] },
+    "9": { w: 4, rows: [15, 9, 9, 9, 15, 8, 8, 8, 15] }
+  };
+
+  const WLED_MATRIX_9H_ROW_COUNT = 9;
+
+  /** Exakt 16×16: Skizzen-Ziffern (9px hoch), Abstand vor „1“ etwas groesser wie in der Vorlage. */
+  function wledMatrixCollectCellsFor9hSketch(text, layout, fgHex) {
+    const { w, h } = layout;
+    if (w !== 16 || h !== 16) return null;
+    const fg = wledMatrixNormalizeHex6(fgHex);
+    const str = wledMatrixScoreCharsForBitmap(text);
+    if (!str) return null;
+    for (let i = 0; i < str.length; i += 1) {
+      if (!WLED_MATRIX_DIGIT9H_SKETCH[str[i]]) return null;
+    }
+    const gapAfterFirst = 1;
+    const gapAfterSecond = str.length >= 3 && str[2] === "1" ? 2 : 1;
+    let unitW = 0;
+    for (let i = 0; i < str.length; i += 1) {
+      unitW += WLED_MATRIX_DIGIT9H_SKETCH[str[i]].w;
+      if (i < str.length - 1) unitW += i === 0 ? gapAfterFirst : gapAfterSecond;
+    }
+    if (unitW > w) return null;
+    const drawH = WLED_MATRIX_9H_ROW_COUNT;
+    if (drawH > h) return null;
+    const ox = Math.max(0, Math.floor((w - unitW) / 2));
+    const oy = Math.max(0, Math.round((h - drawH) / 2));
+    const cells = new Map();
+    let left = ox;
+    for (let k = 0; k < str.length; k += 1) {
+      if (k > 0) left += k === 1 ? gapAfterFirst : gapAfterSecond;
+      const g = WLED_MATRIX_DIGIT9H_SKETCH[str[k]];
+      const gw = g.w;
+      for (let r = 0; r < WLED_MATRIX_9H_ROW_COUNT; r += 1) {
+        const rowBits = g.rows[r] || 0;
+        for (let c = 0; c < gw; c += 1) {
+          if (((rowBits >> (gw - 1 - c)) & 1) === 0) continue;
+          const px = left + c;
+          const py = oy + r;
+          if (px < 0 || py < 0 || px >= w || py >= h) continue;
+          const idx = wledMatrixToLinearIndex(layout, px, py);
+          if (idx >= 0 && idx < w * h) cells.set(idx, fg);
+        }
+      }
+      left += gw;
+    }
+    return cells.size > 0 ? cells : null;
+  }
+
   const WLED_MATRIX_DIGIT35 = {
+    "-": [0, 0, 7, 0, 0],
     0: [7, 5, 5, 5, 7],
     /* Schmale „1“ nur mittlere Spalte — die alte [2,6,2,2,7]-Form frisst Nachbarziffern (z. B. 147). */
     1: [1, 1, 1, 1, 1],
@@ -738,15 +891,17 @@
         if (tw <= w && th <= h) return { scale, gap, cellW: dw * scale, cellH: dh * scale };
       }
     }
-    return { scale: 1, gap: 1, cellW: 3, cellH: 5 };
+    /* Schmalste Variante (gap 0), auch wenn tw > w — Pixel werden spaeter verworfen, aber nicht extra Breite erzwungen. */
+    return { scale: 1, gap: 0, cellW: 3, cellH: 5 };
   }
 
   function wledMatrixCollectCellsForDigits57(text, layout, fgHex) {
-    const { w, h, serpentine, scanMode } = layout;
+    const { w, h } = layout;
     const fg = wledMatrixNormalizeHex6(fgHex);
-    const str = String(text || "").replace(/[^0-9]/g, "").slice(0, 3);
+    const str = wledMatrixScoreCharsForBitmap(text);
     if (!str) return null;
-    const gapOrder = [1, 0];
+    /* Schmale Matrizen: zuerst gap 0 (z. B. „121“ = 13px statt 15px), sonst 5×7 nie in 12px Breite. */
+    const gapOrder = [0, 1];
     for (let gi = 0; gi < gapOrder.length; gi += 1) {
       const gap = gapOrder[gi];
       let unitW = 0;
@@ -755,11 +910,18 @@
         if (!g) return null;
         unitW += g.w + (i > 0 ? gap : 0);
       }
-      const maxScale = Math.min(12, Math.floor(h / 7), Math.floor(w / Math.max(1, unitW)));
+      const vertMax = Math.min(12, Math.floor(h / 7));
+      const horizMax = Math.floor(w / Math.max(1, unitW));
+      /**
+       * Keine Zwangs-Skala 1 bei `horizMax===0`: sonst wird breiter als `w` gezeichnet, Pixel verworfen
+       * → unlesbare Ziffern (z. B. zwei 12×-Haelften nebeneinander). Dann null → 3×5-Fallback.
+       */
+      const maxScale = vertMax < 1 || horizMax < 1 ? 0 : Math.min(vertMax, horizMax);
       for (let scale = maxScale; scale >= 1; scale -= 1) {
         const drawW = unitW * scale;
         const drawH = 7 * scale;
-        if (drawW > w || drawH > h) continue;
+        if (drawH > h) continue;
+        if (drawW > w) continue;
         const cells = new Map();
         const ox = Math.max(0, Math.floor((w - drawW) / 2));
         const oy = Math.max(0, Math.floor((h - drawH) / 2));
@@ -777,7 +939,7 @@
                   const px = left + c * scale + sx;
                   const py = oy + r * scale + sy;
                   if (px < 0 || py < 0 || px >= w || py >= h) continue;
-                  const idx = wledMatrixXYToLinearIndex(px, py, w, h, serpentine, scanMode);
+                  const idx = wledMatrixToLinearIndex(layout, px, py);
                   if (idx >= 0 && idx < w * h) cells.set(idx, fg);
                 }
               }
@@ -785,21 +947,20 @@
           }
           left += (gw + gap) * scale;
         }
-        if (cells.size > 0) return cells;
+        if (cells.size > 0 && drawW <= w) return cells;
       }
     }
     return null;
   }
 
   function wledMatrixCollectCellsForDigits(text, layout, fgHex) {
-    const { w, h, serpentine, scanMode } = layout;
+    const { w, h } = layout;
     const fg = wledMatrixNormalizeHex6(fgHex);
     const cells = new Map();
-    const s = String(text || "").replace(/[^0-9]/g, "").slice(0, 3);
-    const str = s || "0";
+    const str = wledMatrixScoreCharsForBitmap(text) || "0";
     const digitW = 3;
     const digitH = 5;
-    const { scale, gap, cellW, cellH } = wledMatrixComputeDigitLayout(WLED_MATRIX_SCORE_SLOT_COUNT, w, h);
+    const { scale, gap, cellW, cellH } = wledMatrixComputeDigitLayout(Math.max(str.length, 1), w, h);
     const drawW = str.length * cellW + (str.length - 1) * gap;
     const drawH = cellH;
     const ox = Math.max(0, Math.floor((w - drawW) / 2));
@@ -820,7 +981,7 @@
               const px = left + c * scale + sx;
               const py = oy + r * scale + sy;
               if (px < 0 || py < 0 || px >= w || py >= h) continue;
-              const idx = wledMatrixXYToLinearIndex(px, py, w, h, serpentine, scanMode);
+              const idx = wledMatrixToLinearIndex(layout, px, py);
               if (idx >= 0 && idx < w * h) cells.set(idx, fg);
             }
           }
@@ -832,7 +993,7 @@
   }
 
   function wledMatrixCollectCellsForArrow(layout, fgHex) {
-    const { w, h, serpentine, scanMode } = layout;
+    const { w, h } = layout;
     const fg = wledMatrixNormalizeHex6(fgHex);
     const cells = new Map();
     const { pts, gw, gh } = wledMatrixDartArrowRelativeCells();
@@ -848,7 +1009,7 @@
           const px = ox + dx * scale + sx;
           const py = oy + dy * scale + sy;
           if (px < 0 || py < 0 || px >= w || py >= h) continue;
-          const idx = wledMatrixXYToLinearIndex(px, py, w, h, serpentine, scanMode);
+          const idx = wledMatrixToLinearIndex(layout, px, py);
           if (idx >= 0 && idx < w * h) cells.set(idx, fg);
         }
       }
@@ -881,6 +1042,23 @@
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     await triggerJsonState(endpoint, payload);
     wledMatrixLastJsonByHost.set(hostK, Date.now());
+    try {
+      const seg0 = payload?.seg?.[0];
+      const iArr = seg0?.i;
+      const pairs = Array.isArray(iArr) && iArr.length > 3 ? (iArr.length - 3) / 2 : 0;
+      const host = String(normalizeEndpoint(endpoint) || "")
+        .replace(/^https?:\/\//i, "")
+        .split("/")[0];
+      ADM.logger?.info?.("wled", "matrix POST /json/state seg.i", {
+        host,
+        seg: seg0?.id,
+        fx: seg0?.fx,
+        pairs: Math.trunc(pairs),
+        transition: payload?.transition
+      });
+    } catch {
+      /* ignore */
+    }
   }
 
   function wledMatrixQueueJson(settings, controllerId, asyncFn) {
@@ -902,16 +1080,26 @@
     const { segId, w, h } = layout;
     const clearLen = w * h;
     const iArr = wledMatrixBuildSegI(0, clearLen, cells);
-    return { on: true, transition, seg: [{ id: segId, i: iArr }] };
+    /**
+     * Ohne `fx:0` kann ein laufender WLED-Effekt (z. B. „Scrolling Text“ mit „261 : 241“) weiterlaufen
+     * und mit `seg[].i` kollidieren → Kauderwelsch. Solid = nur unsere Pixel (bis zum naechsten Preset).
+     */
+    return {
+      on: true,
+      transition,
+      seg: [{ id: segId, fx: 0, sx: 0, i: iArr }]
+    };
   }
 
-  /** 0 = Matrix 1, 1 = Matrix 2 — gelbe [ADM]-Zeile im Worker-Mirror (Kategorie WLED). */
-  function mirrorLogWledMatrixScore(playerIndex0, scoreText) {
+  /** Gelbe [ADM]-Zeile im Worker-Mirror: `[ADM] <Segment-Titel> = <Punkte>`. */
+  function mirrorLogWledMatrixScore(playerIndex0, scoreText, settings) {
     try {
       const pi = Math.trunc(Number(playerIndex0));
       if (!Number.isFinite(pi) || pi < 0 || pi > 1) return;
       const s = String(scoreText ?? "").trim() || "—";
-      ADM.triggerWorkerLog?.printAdmWledMatrixLine?.({ matrixNo: pi + 1, score: s });
+      const st = settings && typeof settings === "object" ? settings : ADM.getSettings?.() || {};
+      const segmentLabel = wledMatrixLogSegmentTitle(st, pi);
+      ADM.triggerWorkerLog?.printAdmWledMatrixLine?.({ segmentLabel, score: s });
     } catch {
       // ignore
     }
@@ -1006,9 +1194,102 @@
     if (!hasDest) return;
     if (!WLED_MATRIX_SCORE_KEYS.has(key)) return;
 
-    const scores = readWledMatrixPlayerScores(args);
-    const activePiRaw = args?.playerIndex ?? args?.player;
+    /**
+     * Bridge-`player` ist oft falsch (z. B. immer 0). `throwLogPlayerIndex` im Visit-Meta kommt aus dem Tracker
+     * und muss Vorrang haben — sonst falsche Matrix + falsche `[ADM] … = Rest`-Zeile bei `throw`/`busted`/Highscores.
+     */
+    const visitPiRaw = args?.__admVisitMeta?.throwLogPlayerIndex;
+    const fromVisit =
+      visitPiRaw != null &&
+      visitPiRaw !== "" &&
+      Number.isFinite(Number(visitPiRaw))
+        ? Math.trunc(Number(visitPiRaw))
+        : null;
+    const activePiRaw =
+      fromVisit != null && fromVisit >= 0 && fromVisit <= 15
+        ? fromVisit
+        : args?.playerIndex ?? args?.player;
     const activePi = Number.isFinite(Number(activePiRaw)) ? Math.trunc(Number(activePiRaw)) : null;
+
+    let scores = readWledMatrixPlayerScores(args);
+    /** `x01_game_start` / WS-`gameon`: Payload hatte oft keine Scores — wie auf dem Display aus merged State. */
+    if (
+      (key === "x01_game_start" || key === "gameon") &&
+      (!scores ||
+        scores.length < 2 ||
+        scores[0] == null ||
+        scores[1] == null ||
+        !Number.isFinite(scores[0]) ||
+        !Number.isFinite(scores[1]))
+    ) {
+      try {
+        const merged = ADM.admTriggers?.getMergedStateForMatrix?.();
+        if (Array.isArray(merged?.playerScores) && merged.playerScores.length >= 2) {
+          const alt = merged.playerScores.map((x) => (Number.isFinite(Number(x)) ? Math.trunc(Number(x)) : null));
+          if (alt[0] != null && alt[1] != null && Number.isFinite(alt[0]) && Number.isFinite(alt[1])) {
+            scores = alt;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    /** Viele `throw`-Payloads haben kein `playerScores[]` — Rest steht in `__admVisitMeta` (Tracker). */
+    if ((!scores || !scores.length) && key === "throw") {
+      const meta = args?.__admVisitMeta;
+      const rem =
+        meta?.throwerRemainingScore != null && Number.isFinite(Number(meta.throwerRemainingScore))
+          ? Math.trunc(Number(meta.throwerRemainingScore))
+          : null;
+      const ti =
+        meta?.throwLogPlayerIndex != null && Number.isFinite(Number(meta.throwLogPlayerIndex))
+          ? Math.trunc(Number(meta.throwLogPlayerIndex))
+          : activePi;
+      if (rem != null && ti !== null && (ti === 0 || ti === 1)) {
+        scores = [null, null];
+        scores[ti] = rem;
+      }
+    } else if (key === "throw" && scores && scores.length >= 2) {
+      /** `playerScores` kann den Wuerfer-Slot kurz `null` lassen — Tracker-Rest einsetzen. */
+      const meta = args?.__admVisitMeta;
+      const rem =
+        meta?.throwerRemainingScore != null && Number.isFinite(Number(meta.throwerRemainingScore))
+          ? Math.trunc(Number(meta.throwerRemainingScore))
+          : null;
+      const ti =
+        meta?.throwLogPlayerIndex != null && Number.isFinite(Number(meta.throwLogPlayerIndex))
+          ? Math.trunc(Number(meta.throwLogPlayerIndex))
+          : activePi;
+      if (rem != null && ti !== null && (ti === 0 || ti === 1) && ti < scores.length) {
+        const cur = scores[ti];
+        if (cur == null || !Number.isFinite(cur)) {
+          scores = scores.slice();
+          scores[ti] = rem;
+        }
+      }
+    }
+
+    /** `emit("throw")` haengt oft WS-`playerScores` an, die noch den Stand **vor** dem Wurf haben — Meta-Rest nach Wurf hat Vorrang. */
+    if (key === "throw") {
+      const meta = args?.__admVisitMeta;
+      const remPost =
+        meta?.throwerRemainingScore != null && Number.isFinite(Number(meta.throwerRemainingScore))
+          ? Math.trunc(Number(meta.throwerRemainingScore))
+          : null;
+      const ti =
+        meta?.throwLogPlayerIndex != null && Number.isFinite(Number(meta.throwLogPlayerIndex))
+          ? Math.trunc(Number(meta.throwLogPlayerIndex))
+          : activePi;
+      if (remPost != null && (ti === 0 || ti === 1)) {
+        if (!scores || scores.length < 2) {
+          scores = [null, null];
+        } else {
+          scores = scores.slice();
+        }
+        while (scores.length < 2) scores.push(null);
+        scores[ti] = remPost;
+      }
+    }
 
     const pushScore = (pi, withFade) => {
       if (!showScores || !scores || pi < 0 || pi > 1 || pi >= scores.length) return;
@@ -1019,7 +1300,7 @@
         const cid = pi === 0 ? cid0 : cid1;
         const ep = pi === 0 ? ep0 : ep1;
         if (!cid || !ep) return;
-        mirrorLogWledMatrixScore(pi, scoreStr);
+        mirrorLogWledMatrixScore(pi, scoreStr, settings);
         wledMatrixPostDigits(settings, cid, scoreStr, withFade, pi);
         return;
       }
@@ -1027,7 +1308,7 @@
       if (!url) return;
       const body = buildWledMatrixScoreBody(scoreStr, withFade);
       if (!body) return;
-      mirrorLogWledMatrixScore(pi, scoreStr);
+      mirrorLogWledMatrixScore(pi, scoreStr, settings);
       void postWledMatrixScreen(settings, url, body);
     };
 
@@ -1087,7 +1368,7 @@
               wledMatrixBuildSegUpdatePayload(settings, cells, 12, turnPi)
             );
             if (activePi != null && activePi >= 0 && activePi <= 1) {
-              mirrorLogWledMatrixScore(activePi, String(rem));
+              mirrorLogWledMatrixScore(activePi, String(rem), settings);
             }
           });
         } else if (turnUrl) {
@@ -1096,7 +1377,7 @@
             await new Promise((r) => setTimeout(r, arrowMs));
             await postWledMatrixScreen(settings, turnUrl, buildWledMatrixScoreBody(String(rem), true));
             if (activePi != null && activePi >= 0 && activePi <= 1) {
-              mirrorLogWledMatrixScore(activePi, String(rem));
+              mirrorLogWledMatrixScore(activePi, String(rem), settings);
             }
           });
         }
@@ -1117,8 +1398,18 @@
         key === "140" ||
         key === "range_100_139")
     ) {
-      pushScore(0, key !== "throw");
-      pushScore(1, key !== "throw");
+      const perThrowerOnly =
+        key === "throw" ||
+        key === "busted" ||
+        key === "180" ||
+        key === "140" ||
+        key === "range_100_139";
+      if (perThrowerOnly && (activePi === 0 || activePi === 1)) {
+        pushScore(activePi, key !== "throw");
+      } else {
+        pushScore(0, key !== "throw");
+        pushScore(1, key !== "throw");
+      }
     }
   }
 
@@ -1475,7 +1766,7 @@
       const body = kind === "arrow" ? buildWledMatrixArrowBody() : buildWledMatrixScoreBody(txt, true);
       if (!body) return { ok: false, error: "Empty screen body" };
       await postWledMatrixScreen(settings, url, body);
-      if (kind !== "arrow") mirrorLogWledMatrixScore(pi, txt);
+      if (kind !== "arrow") mirrorLogWledMatrixScore(pi, txt, settings);
       return { ok: true, mode: "pixelit", kind };
     }
 
@@ -1505,7 +1796,7 @@
         ep2,
         wledMatrixBuildSegUpdatePayload(settings, cells, 12, pi)
       );
-      if (kind !== "arrow") mirrorLogWledMatrixScore(pi, txt);
+      if (kind !== "arrow") mirrorLogWledMatrixScore(pi, txt, settings);
     });
     return { ok: true, mode: "wled_leds", kind };
   }

@@ -1,0 +1,114 @@
+:root {
+  --bg: #1a1d24;
+  --panel: #252a33;
+  --text: #e8eaef;
+  --muted: #9aa3b2;
+  --cell: #2f3540;
+  --cell-on: #f8fafc;
+  --accent: #3b82f6;
+  --border: rgba(255, 255, 255, 0.1);
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  padding: 14px 16px 20px;
+  font: 14px/1.4 system-ui, Segoe UI, Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-width: 280px;
+}
+.mc-header h1 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.mc-hint {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  max-width: 52rem;
+}
+.mc-meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+}
+.mc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 12px;
+}
+.mc-btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+}
+.mc-btn:hover {
+  filter: brightness(1.08);
+}
+.mc-btn--primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+.mc-hover {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: auto;
+}
+.mc-grid-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 200px);
+  padding: 8px;
+  background: var(--panel);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  touch-action: none;
+  user-select: none;
+}
+.mc-grid {
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  margin: 0 auto;
+  touch-action: none;
+  user-select: none;
+}
+.mc-cell {
+  width: var(--cell-size, 18px);
+  height: var(--cell-size, 18px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--cell);
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+.mc-cell[data-on="1"] {
+  background: var(--cell-on);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.mc-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.mc-status {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  min-height: 1.25em;
+}
+.mc-status.mc-err {
+  color: #fca5a5;
+}

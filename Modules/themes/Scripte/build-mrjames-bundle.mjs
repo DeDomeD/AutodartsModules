@@ -15,6 +15,8 @@ const out = `(function (scope) {
     label: "AD Template (MrJames)",
     author: "MrJames",
     sourceName: "Stylebot",
+    /* Stylebot-Fidelity in content.js: ohne dieses Flag greifen ADM-Layout + breites Shared-Chrome und überlagern den Stylebot-Look. */
+    stylebotImport: true,
     tags: ["stylebot", "stylebot-pack", "extended-ui", "community"],
     preview: {
       bg: "radial-gradient(120% 90% at 50% 0%, rgba(120,0,0,.9), rgba(0,0,0,.95))",

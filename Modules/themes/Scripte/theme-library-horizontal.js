@@ -1,5 +1,5 @@
 (function initThemesHorizontalLibrary(scope) {
-  const sets = scope.AD_SB_WEBSITE_THEME_SETS || (scope.AD_SB_WEBSITE_THEME_SETS = {});
+  const sets = scope.ADM_WEBSITE_THEME_SETS || (scope.ADM_WEBSITE_THEME_SETS = {});
   const base = Array.isArray(sets.horizontal) ? sets.horizontal.slice() : [];
   const extra = [
     {

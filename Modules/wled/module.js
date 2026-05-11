@@ -29,6 +29,20 @@
     return { w, h };
   }
 
+  /**
+   * Karten-`orientation` / JSON: horizontal | horizontal_mirror | vertical | vertical_mirror
+   * (Legacy: nur horizontal/vertical oder rows/cols.)
+   */
+  function parseWledCardOrientationToken(raw) {
+    let o = String(raw ?? "").trim().toLowerCase().replace(/-/g, "_");
+    if (!o) o = "horizontal";
+    if (o === "rows") o = "horizontal";
+    if (o === "cols") o = "vertical";
+    if (o === "horizontal_mirror" || o === "vertical_mirror") return o;
+    if (o.startsWith("vertical")) return o.includes("mirror") ? "vertical_mirror" : "vertical";
+    return o.includes("mirror") ? "horizontal_mirror" : "horizontal";
+  }
+
   const WLED_TRIGGER_GROUPS = [
     {
       key: "wledPad",
@@ -1079,13 +1093,13 @@
     const cid = String(raw?.controllerId || "").trim() || String(ctrls[0]?.id || "").trim();
     const wh = clampWledMatrixDimsFromForm(raw?.w, raw?.h);
     const serpentine = raw?.serpentine === true;
-    const orientation =
-      String(raw?.orientation || "horizontal").toLowerCase() === "vertical" ? "vertical" : "horizontal";
+    const orientation = parseWledCardOrientationToken(raw?.orientation);
     const segmentId = Math.max(0, Math.min(31, Math.trunc(Number(raw?.segmentId) || 0)));
+    const segmentLabel = String(raw?.segmentLabel || raw?.segmentName || "").trim();
     const id =
       String(raw?.id || "").trim() ||
       `m_${Date.now()}_${Math.floor(Math.random() * 99999)}`;
-    return { id, controllerId: cid, segmentId, w: wh.w, h: wh.h, serpentine, orientation };
+    return { id, controllerId: cid, segmentId, segmentLabel, w: wh.w, h: wh.h, serpentine, orientation };
   }
 
   function legacyWledMatrixDisplaysForUi(settings, ctrls) {
@@ -1094,6 +1108,15 @@
     const segId = Math.max(0, Math.min(31, Math.trunc(Number(settings?.wledMatrixWledSegmentId) || 0)));
     const orientation =
       String(settings?.wledMatrixWledScanMode || "rows").toLowerCase() === "cols" ? "vertical" : "horizontal";
+    const mirrorLegacy = settings?.wledMatrixWledMirrorX === true;
+    const orientToken =
+      orientation === "vertical"
+        ? mirrorLegacy
+          ? "vertical_mirror"
+          : "vertical"
+        : mirrorLegacy
+          ? "horizontal_mirror"
+          : "horizontal";
     return [
       normalizeWledMatrixDisplayRow(
         {
@@ -1103,7 +1126,7 @@
           w: wh.w,
           h: wh.h,
           serpentine: settings?.wledMatrixWledSerpentine === true,
-          orientation
+          orientation: orientToken
         },
         ctrls
       )
@@ -1140,17 +1163,30 @@
       const hIn = card.querySelector(".wledMatrixDisplayH");
       const serp = card.querySelector(".wledMatrixDisplaySerpentine");
       const orient = card.querySelector(".wledMatrixDisplayOrientation");
+      let segmentLabel = "";
+      try {
+        const opt =
+          seg?.selectedOptions?.[0] ||
+          (seg && seg.options && seg.selectedIndex >= 0 ? seg.options[seg.selectedIndex] : null);
+        segmentLabel = String(opt?.textContent ?? "").replace(/\s+/g, " ").trim();
+      } catch {
+        segmentLabel = "";
+      }
+      if (!segmentLabel) {
+        const sid = Math.max(0, Math.min(31, Math.trunc(Number(seg?.value) || 0)));
+        segmentLabel = `Segment ${sid}`;
+      }
       out.push(
         normalizeWledMatrixDisplayRow(
           {
             id,
             controllerId: ctrl?.value || "",
             segmentId: Math.max(0, Math.min(31, Math.trunc(Number(seg?.value) || 0))),
+            segmentLabel,
             w: wIn?.value,
             h: hIn?.value,
             serpentine: !!serp?.checked,
-            orientation:
-              String(orient?.value || "horizontal").toLowerCase() === "vertical" ? "vertical" : "horizontal"
+            orientation: parseWledCardOrientationToken(String(orient?.value || "horizontal"))
           },
           ctrls
         )
@@ -1163,8 +1199,11 @@
     const lang = getLang(settings);
     const ctrlOpts = renderWledMatrixControllerOptions(settings, d.controllerId);
     const serp = d.serpentine ? "checked" : "";
-    const horizSel = d.orientation !== "vertical" ? "selected" : "";
-    const vertSel = d.orientation === "vertical" ? "selected" : "";
+    const ot = parseWledCardOrientationToken(d.orientation);
+    const hSel = ot === "horizontal" ? "selected" : "";
+    const hmSel = ot === "horizontal_mirror" ? "selected" : "";
+    const vSel = ot === "vertical" ? "selected" : "";
+    const vmSel = ot === "vertical_mirror" ? "selected" : "";
     const segOpts = `<option value="${d.segmentId}" selected>${lang === "en" ? "Segment" : "Segment"} ${d.segmentId}</option>`;
     const rmTitle = lang === "en" ? "Remove this matrix" : "Diese Matrix entfernen";
     return `
@@ -1177,6 +1216,16 @@
         <div class="formRow">
           <label class="label" data-i18n="wled_matrix_display_segment">Segment</label>
           <select class="input wledMatrixDisplaySeg">${segOpts}</select>
+        </div>
+        <div class="formRow">
+          <label class="label" data-i18n="wled_matrix_display_layout_label">LED & Leserichtung</label>
+          <select class="input wledMatrixDisplayOrientation">
+            <option value="horizontal" ${hSel} data-i18n="wled_matrix_layout_horizontal">Horizontal (Zeilen)</option>
+            <option value="horizontal_mirror" ${hmSel} data-i18n="wled_matrix_layout_horizontal_mirror">Horizontal, X spiegeln</option>
+            <option value="vertical" ${vSel} data-i18n="wled_matrix_layout_vertical">Vertikal (Spalten)</option>
+            <option value="vertical_mirror" ${vmSel} data-i18n="wled_matrix_layout_vertical_mirror">Vertikal, X spiegeln</option>
+          </select>
+          <div class="hint" data-i18n="wled_matrix_display_layout_hint"></div>
         </div>
         <div class="formRow">
           <label class="label" data-i18n="wled_matrix_display_size_label">Breite × Höhe</label>
@@ -1195,14 +1244,8 @@
             <span class="slider"></span>
           </label>
         </div>
-        <div class="formRow" style="margin-top:10px;">
-          <label class="label" data-i18n="wled_matrix_display_orientation">Ausrichtung</label>
-          <select class="input wledMatrixDisplayOrientation">
-            <option value="horizontal" ${horizSel} data-i18n="wled_matrix_orientation_horizontal">Horizontal (Zeilen)</option>
-            <option value="vertical" ${vertSel} data-i18n="wled_matrix_orientation_vertical">Vertikal (Spalten)</option>
-          </select>
-        </div>
-        <div class="inlineActionsRow" style="margin-top:10px;">
+        <div class="inlineActionsRow" style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button type="button" class="btnMini" data-wled-matrix-config-open data-wled-matrix-config-idx="${idx}" data-i18n="wled_matrix_config_open_btn">Matrix Config</button>
           <button type="button" class="customThemeDelete" data-wled-matrix-remove title="${escapeWledAttr(rmTitle)}">X</button>
         </div>
       </div>
@@ -1905,6 +1948,34 @@
           true
         );
         root.addEventListener("click", async (ev) => {
+          const cfgBtn = ev.target?.closest?.("[data-wled-matrix-config-open]");
+          if (cfgBtn && root.contains(cfgBtn)) {
+            ev.preventDefault();
+            const rawIdx = cfgBtn.getAttribute("data-wled-matrix-config-idx");
+            const dIdx = Math.max(0, Math.trunc(Number(rawIdx)) || 0);
+            await persistWledMatrix();
+            const url = chrome.runtime.getURL(`Modules/wled/matrix-config.html?d=${dIdx}`);
+            try {
+              if (chrome?.windows?.create) {
+                await chrome.windows.create({
+                  url,
+                  type: "popup",
+                  width: 700,
+                  height: 820,
+                  focused: true
+                });
+              } else {
+                await chrome.tabs.create({ url });
+              }
+            } catch {
+              try {
+                await chrome.tabs.create({ url });
+              } catch {
+                /* ignore */
+              }
+            }
+            return;
+          }
           const addBtn = ev.target?.closest?.("#wledMatrixAddDisplayBtn");
           if (addBtn && root.contains(addBtn)) {
             ev.preventDefault();

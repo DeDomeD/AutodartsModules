@@ -82,9 +82,14 @@
     if (!raw) return map;
     const lines = raw.split(/\r?\n/);
     for (let i = 0; i < lines.length; i += 1) {
-      const line = String(lines[i] || "").trim();
+      let line = String(lines[i] || "").trim();
       if (!line || line.startsWith("#") || line.startsWith("//")) continue;
-      const m = line.match(/^(\d{1,4})\s*:\s*(.+)$/);
+      try {
+        line = line.replace(/^\uFEFF/, "");
+      } catch (_) {}
+      /** ASCII `:`, `=`, Unicode `：` (U+FF1A), optional `40 - Weg` / `40 – Weg` */
+      let m = line.match(/^(\d{1,4})\s*[:=\uFF1A;]\s*(.+)$/);
+      if (!m) m = line.match(/^(\d{1,4})\s+[-\u2013]\s+(.+)$/);
       if (!m) continue;
       const score = Math.trunc(Number(m[1]));
       if (!Number.isFinite(score) || score < 1 || score > 1002) continue;
@@ -94,12 +99,24 @@
     return map;
   }
 
+  /** True, wenn für diesen Rest eine Custom-Checkout-Zeile existiert (für Schwelle / Gate im Trigger-Worker). */
+  function hasCustomCheckoutRuleForRemaining(remainingScore) {
+    const remRaw = remainingScore;
+    const rem =
+      remRaw != null && remRaw !== "" && Number.isFinite(Number(remRaw)) ? Math.trunc(Number(remRaw)) : NaN;
+    if (!Number.isFinite(rem) || rem <= 0) return false;
+    const map = parseObsZoomCustomCheckoutMapFromSettings(ADM.getSettings?.() || {});
+    return map.has(rem);
+  }
+
   function pickFirstManagedCheckoutHintToken(hint) {
     const cleaned = String(hint || "").replace(/\s+/g, " ").trim();
     if (!cleaned) return "";
-    const parts = cleaned.split(" ");
+    const parts = cleaned.split(/[\s,+/|>]+/).filter(Boolean);
     for (let j = 0; j < parts.length; j += 1) {
-      const tok = String(parts[j] || "").trim();
+      let tok = String(parts[j] || "").trim();
+      if (!tok) continue;
+      tok = tok.replace(/^[(]+/, "").replace(/[)]+$/g, "").trim();
       if (!tok) continue;
       const mk = normalizeManagedFilterKey(tok);
       if (mk && mk !== "MAIN") return tok;
@@ -859,6 +876,7 @@
     checkoutGuidePassesPlayerFilter,
     parseEffects: parseObsZoomEffects,
     triggerTestInput,
-    resolveDomCheckoutGuide
+    resolveDomCheckoutGuide,
+    hasCustomCheckoutRuleForRemaining
   };
 })(self);
